@@ -55,7 +55,13 @@
       "wget * | *": "ask",
       "bash -c *": "ask",
       "sh -c *": "ask",
-      "zsh -c *": "ask"
+      "zsh -c *": "ask",
+      "*/tmp/*": "deny",
+      "*/tmp": "deny",
+      "*/tmp *": "deny",
+      "*/var/folders/*": "deny",
+      "*$TMPDIR*": "deny",
+      "*mktemp*": "deny"
     },
     "atlassian_jira_*": "allow",
     "atlassian_jira_move_*": "deny",
