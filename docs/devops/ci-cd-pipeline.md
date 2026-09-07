@@ -29,7 +29,7 @@ The repository holds **zero secrets**. Everything above runs on the built-in `GI
 | `sonar-ratchet` | — | Always | `tools/sonar/ratchet.sh` — three Java issue counts against `tools/sonar/sonar-baseline.json` |
 | `sonar-ratchet-ui` | — | Always | `tools/sonar/ratchet-ui.sh` — the same three counts over `ui/src` against `sonar-ui-baseline.json` |
 | `dependency-cve` | — | Always, unconditionally | Trivy over both dependency trees, gating on HIGH and CRITICAL |
-| `supply-chain` | — | Always | `audit-containers.sh` then `audit-plugins.sh`, each `if: always()` so neither finding hides the other |
+| `supply-chain` | — | Always | `audit-containers.sh`, `audit-actions.sh` then `audit-plugins.sh` — three populations, each `if: always()` so no one finding hides another |
 
 ### Required status checks on `main`
 
@@ -56,6 +56,12 @@ It drives the shipped containers through a real browser — three of them, seria
 
 **A failed `image` job skips it rather than failing it.** `needs: [ image ]` supplies that, and the job's `if:` tests only the event name — no `always()`, no `failure()` — so GitHub's default skip survives. Honest reporting: the suite did not fail, it never got an artefact to run against.
 
+**Both of those lines are held by the build.** `E2eJobInvariantTest` fails `./mvnw verify` if the `e2e` job's `if:` stops excluding `pull_request` or grows an `always()`/`failure()` term, if its `needs:` stops containing `image`, or if the `ci-images` artefact name stops agreeing between the `image` job's upload step and the `e2e` job's download step. Neither line is self-documenting at the point of edit, and neither is enforced by GitHub, so the gate is what makes removing one loud instead of silent ([ADR-006](../adr/ADR-006-build-quality-gates.md), amended 2026-09-07). It reads the workflow as text and never executes the job, so a green build is not evidence the suite ran.
+
+**The browsers arrive in a digest-pinned container, not from a download.** The job does not run `npx playwright install --with-deps` — that `apt-get`ed system libraries as root and fetched three browsers from Microsoft's CDN with nothing verifying what arrived. Instead the suite itself runs inside `mcr.microsoft.com/playwright:v1.63.0-noble` pinned by digest, as a non-root uid, with `--network host` so the host-side health wait still reaches port 8443 and `--ipc host` so Chromium does not exhaust `/dev/shm`. `docker compose` stays on the runner, which is why this is a `docker run` rather than a `container:` job ([ADR-073](../adr/ADR-073-supply-chain-coverage-for-actions-and-browsers.md)).
+
+**That pin is coupled to an npm version, and the coupling is held by the build.** `PlaywrightImagePinTest` fails `./mvnw verify` unless the image tag in the workflow, the `tag` field in `tools/supply-chain/expected-containers.json`, the `@playwright/test` specifier in `e2e/package.json` and the version resolved for it in `e2e/package-lock.json` all name the same release. Moving one without the others is not a version bump but a broken suite, and it fails in a misleading way — Playwright reports a missing browser executable, which points at the image rather than at the two files that disagree. It also fails on an unpinned mention and on a range operator, which is why the caret was dropped from that dependency. It cannot prove the digest is the one that tag resolves to; that needs the registry and belongs to `audit-containers.sh`.
+
 **CI owns the stack.** The job runs `up -d --wait` itself and sets `E2E_REUSE_STACK=true`, so `e2e/global-setup.ts` skips its own `up` while still performing the host-side health wait, and `e2e/global-teardown.ts` skips `down -v`. Container logs therefore survive the tests and are collected as the `e2e-stack-logs` artifact; teardown happens in a final `if: always()` step.
 
 **Failures reach a human through GitHub's own notification** for a failed workflow run — no email action, no `actions/github-script`, no secret. Alongside it the job writes a `$GITHUB_STEP_SUMMARY` table naming every scenario that did not pass first time (`file:line`, title, browser project, status) and emits `::error::` / `::warning::` annotations so the finding attaches to the commit. It reports identity, never assertion text: a failing matcher prints its received value, and that value can be a live join code ([ADR-071](../adr/ADR-071-e2e-artefact-publication-boundary.md)).
@@ -68,7 +74,7 @@ It drives the shipped containers through a real browser — three of them, seria
 
 - **Before pushing:** `./mvnw verify` at the repository root, and `npm run verify` in `ui/` if you touched the front end. Both are what CI runs.
 - **If you changed `pom.xml` or any `.java` under `src/`:** re-run `tools/sonar/scan.sh` with the local Sonar container up and commit both JSONs, or `sonar-ratchet` fails on a stale `sourceHash` before it compares a single count. `tools/sonar/scan-ui.sh` is the equivalent for `ui/src`.
-- **If you changed a pinned plugin or container:** run `tools/supply-chain/audit-plugins.sh` / `audit-containers.sh` and update the baseline in the same commit — never to turn a red job green.
+- **If you changed a pinned plugin, container or GitHub Action:** run the matching `tools/supply-chain/audit-*.sh` — `audit-plugins.sh`, `audit-containers.sh`, `audit-actions.sh` — and update the baseline in the same commit, never to turn a red job green. Adding an action is the case to watch: `audit-actions.sh` rejects any `uses:` that is not `owner/repo@<40-hex-sha>` without consulting its baseline at all, so a bare tag fails on its first commit rather than waiting to be declared.
 - **If you changed the E2E suite or `compose.e2e.yml`:** push the branch and use `workflow_dispatch`. It is not restricted to `main` for exactly this reason.
 
 ## Deployment
