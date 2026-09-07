@@ -201,8 +201,8 @@ figures rather than one, and conflating them is how a false sense of safety gets
 
 - **Executability** — every rollback runs without error and the changelog re-applies — is
   covered for all 27 changesets across all eleven changelogs on PostgreSQL 17, by
-  `PostgresRollbackRoundTripIT.java:156` (anchor: `entire changelog`) unwinding
-  `PostgresRollbackRoundTripIT.java:85` (anchor: `EXPECTED_CHANGESET_ROWS`) changesets in one
+  `PostgresRollbackRoundTripIT.java:179` (anchor: `entire changelog`) unwinding
+  `PostgresRollbackRoundTripIT.java:105` (anchor: `EXPECTED_CHANGESET_ROWS`) changesets in one
   pass.
 - **State restoration** — the rollback puts the database back — is covered for six of the eleven
   changelogs: `004-trick-play-schema.xml`, `006-session-expiry.xml`,
@@ -266,7 +266,8 @@ back to raw `<sql>`" (the cost paragraph) were correct when written. EOP-163 the
 (`2026-08-23--guard-join-code-rollback.xml:116-141`), and did not touch this ADR. The current
 figures are **27 `<rollback>` blocks across eleven changelogs**, of which **6 use raw `<sql>`** —
 three in `005-seat-and-sequence-bounds.xml`, two in `006-session-expiry.xml` and one in the
-guard. Both are corroborated by `PostgresRollbackRoundTripIT.java:85`. When recounting, anchor
+guard. Both are corroborated by `PostgresRollbackRoundTripIT.java:105` (anchor: `EXPECTED_CHANGESET_ROWS`).
+When recounting, anchor
 the pattern: `005-seat-and-sequence-bounds.xml:28` (anchor: `rollback`) mentions `<rollback>`
 inside a file-header comment, so an unanchored `grep -c '<rollback>'` overcounts by one. Nothing
 in the build holds a figure in this ADR against the tree, so this drift is a review concern —

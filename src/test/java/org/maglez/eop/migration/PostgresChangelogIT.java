@@ -30,6 +30,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,10 +57,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresChangelogIT {
 
     /**
-     * Own database inside the shared container, so execution order against other integration
-     * tests cannot matter.
+     * Prefix for this class's per-test databases: each test gets its own database inside the shared
+     * container, derived from this prefix, so neither another class nor another test in this class can
+     * affect it.
+     *
+     * <p>All five tests here shared one database until EOP-239. A single name left isolation resting on
+     * the {@code DROP}/{@code CREATE} pair in {@link PostgresTestContainer#freshDatabase(String)}
+     * winning a race on every entry, rather than on the tests being structurally unable to reach each
+     * other's state. EOP-239 records the investigation.</p>
      */
-    private static final String DATABASE_NAME = "eop_changelog_it";
+    private static final String DATABASE_NAME_PREFIX = "eop_changelog_it_";
 
     private static final String CHANGELOG_MASTER = "db/changelog/db.changelog-master.xml";
 
@@ -112,8 +119,8 @@ class PostgresChangelogIT {
     private Liquibase liquibase;
 
     @BeforeEach
-    void setUp() throws SQLException, LiquibaseException {
-        connection = PostgresTestContainer.freshDatabase(DATABASE_NAME);
+    void setUp(final TestInfo testInfo) throws SQLException, LiquibaseException {
+        connection = PostgresTestContainer.freshDatabaseFor(DATABASE_NAME_PREFIX, testInfo);
         final Database database = DatabaseFactory.getInstance()
                 .findCorrectDatabaseImplementation(new JdbcConnection(connection));
         liquibase = new Liquibase(CHANGELOG_MASTER, new ClassLoaderResourceAccessor(), database);
@@ -121,11 +128,14 @@ class PostgresChangelogIT {
 
     @AfterEach
     void tearDown() throws Exception {
-        if (liquibase != null) {
-            liquibase.close();
-        }
-        if (connection != null && !connection.isClosed()) {
-            connection.close();
+        try {
+            if (liquibase != null) {
+                liquibase.close();
+            }
+        } finally {
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
         }
     }
 

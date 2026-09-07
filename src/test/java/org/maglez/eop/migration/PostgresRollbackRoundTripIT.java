@@ -10,6 +10,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 /**
  * Applies the whole changelog to PostgreSQL 17, rolls it back, and applies it again — with real rows
@@ -55,8 +58,18 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Liquibase rollback round-trip against PostgreSQL 17")
 class PostgresRollbackRoundTripIT {
 
-    /** Database created per test; distinct from every other IT so the classes cannot interfere. */
-    private static final String DATABASE_NAME = "eop_rollback_it";
+    /**
+     * Prefix for this class's per-test databases; distinct from every other IT so the classes cannot
+     * interfere.
+     *
+     * <p>Each of the six tests gets its own database rather than all six sharing one. The comment this
+     * replaced claimed a database was created "per test" while a single constant was passed to {@link
+     * PostgresTestContainer#freshDatabase(String)} for the whole class, so isolation rested entirely on
+     * that method's {@code DROP}/{@code CREATE} pair winning a race on every entry — and three of these
+     * tests deliberately abandon their connection mid-transaction, which is exactly when that drop has
+     * a live backend to terminate. EOP-239 records the investigation.</p>
+     */
+    private static final String DATABASE_NAME_PREFIX = "eop_rollback_it_";
 
     /** The master changelog, as {@code application.yml} references it. */
     private static final String CHANGELOG_MASTER = "db/changelog/db.changelog-master.xml";
@@ -66,6 +79,13 @@ class PostgresRollbackRoundTripIT {
 
     /** Changesets that changelog contributes: the {@code modifyDataType} and the padding update. */
     private static final int JOIN_CODE_CHANGESETS = 2;
+
+    /**
+     * EOP-163's guard changelog, which must execute after the widening for the refusal tests to mean
+     * anything: it is the changeset whose rollback re-asserts that every join code still fits
+     * {@code VARCHAR(6)}, so a depth that excludes it unwinds the widening unopposed.
+     */
+    private static final String CHANGELOG_GUARD = "2026-08-23--guard-join-code-rollback.xml";
 
     /**
      * The CHECK constraint EOP-163's guard changelog adds and immediately drops while rolling back.
@@ -135,8 +155,8 @@ class PostgresRollbackRoundTripIT {
     private Liquibase liquibase;
 
     @BeforeEach
-    void setUp() throws Exception {
-        connection = PostgresTestContainer.freshDatabase(DATABASE_NAME);
+    void setUp(final TestInfo testInfo) throws Exception {
+        connection = PostgresTestContainer.freshDatabaseFor(DATABASE_NAME_PREFIX, testInfo);
         final Database database = DatabaseFactory.getInstance()
                 .findCorrectDatabaseImplementation(new JdbcConnection(connection));
         liquibase = new Liquibase(CHANGELOG_MASTER, new ClassLoaderResourceAccessor(), database);
@@ -144,11 +164,14 @@ class PostgresRollbackRoundTripIT {
 
     @AfterEach
     void tearDown() throws Exception {
-        if (liquibase != null) {
-            liquibase.close();
-        }
-        if (connection != null && !connection.isClosed()) {
-            connection.close();
+        try {
+            if (liquibase != null) {
+                liquibase.close();
+            }
+        } finally {
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
         }
     }
 
@@ -249,12 +272,20 @@ class PostgresRollbackRoundTripIT {
      * correct until someone appends a changelog. Deriving it from {@code databasechangelog} keeps the
      * depth right as the changelog grows.
      *
+     * <p>The query scopes by neither {@code deploymentid} nor {@code dateexecuted}, so it is only
+     * meaningful over exactly one apply — hence the precondition below. Rows left by an earlier apply
+     * into the same database would raise the count above the floor and unwind changesets the caller
+     * never named.
+     *
      * @param changelogFilename the changelog file whose first changeset marks the rollback floor
      * @param ownChangesets the number of changesets that file declares, asserted as a lower bound
      * @return the number of changesets to pass to {@code Liquibase#rollback}
      * @throws SQLException if the bookkeeping query fails
      */
     private int rollbackDepthFrom(final String changelogFilename, final int ownChangesets) throws SQLException {
+        assertThat(changelogRowCount())
+                .as("a derived depth is only meaningful over exactly one apply of the changelog")
+                .isEqualTo(EXPECTED_CHANGESET_ROWS);
         final int depth;
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT COUNT(*) FROM databasechangelog WHERE orderexecuted >= "
@@ -268,6 +299,9 @@ class PostgresRollbackRoundTripIT {
         assertThat(depth)
                 .as("%s declares %d changesets, so the depth cannot be smaller", changelogFilename, ownChangesets)
                 .isGreaterThanOrEqualTo(ownChangesets);
+        assertThat(depth)
+                .as("the depth cannot exceed the %d changesets one apply records", EXPECTED_CHANGESET_ROWS)
+                .isLessThanOrEqualTo(EXPECTED_CHANGESET_ROWS);
         return depth;
     }
 
@@ -524,11 +558,44 @@ class PostgresRollbackRoundTripIT {
      * which puts its changeset inside this depth and unwinds it first. The depth is three today, not
      * the widening's own two.</p>
      *
+     * <p>That participation is asserted rather than assumed. If the guard ever fell outside the depth —
+     * because a changelog dated between the two was dropped into {@code changes/}, which the guard's own
+     * header warns about, or because the depth was computed over a contaminated table — the three
+     * refusal tests would not be refused at all, and would fail with a null throwable naming no cause.
+     * Asserting the guard is inside the window turns that into a failure that names it. The assertion is
+     * on the filename rather than on a literal three, so appending a changelog does not break it.</p>
+     *
      * @return the rollback depth, never fewer than the widening's own two changesets
      * @throws SQLException if the query fails
      */
     private int joinCodeRollbackDepth() throws SQLException {
-        return rollbackDepthFrom(CHANGELOG_JOIN_CODE, JOIN_CODE_CHANGESETS);
+        final int depth = rollbackDepthFrom(CHANGELOG_JOIN_CODE, JOIN_CODE_CHANGESETS);
+        assertThat(changelogFilenamesInsideDepth(depth))
+                .as("unwinding to %s must unwind %s first, or the rollback is never refused",
+                        CHANGELOG_JOIN_CODE, CHANGELOG_GUARD)
+                .anyMatch(filename -> filename.endsWith(CHANGELOG_GUARD));
+        return depth;
+    }
+
+    /**
+     * Lists the changelog files of the changesets a rollback of the given depth would unwind.
+     *
+     * @param depth how many changesets a rollback would unwind, counting back from the most recent
+     * @return the filenames of those changesets, most recently executed first
+     * @throws SQLException if the bookkeeping query fails
+     */
+    private List<String> changelogFilenamesInsideDepth(final int depth) throws SQLException {
+        final List<String> filenames = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT filename FROM databasechangelog ORDER BY orderexecuted DESC LIMIT ?")) {
+            statement.setInt(1, depth);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    filenames.add(rows.getString(1));
+                }
+            }
+        }
+        return filenames;
     }
 
     // ---------------------------------------------------------------------------------------------
