@@ -30,6 +30,30 @@
 #                            of H2 from the artifact -- an H2 CVE would be gated here even
 #                            though H2 does not ship. Failing loud on a dependency we do not
 #                            ship is the safe direction of that error.
+#   e2e/                  -- SKIPPED, and the decision is EOP-236's, not an oversight. Trivy
+#                            detects e2e/package-lock.json and suppresses it today only
+#                            because the gating pass omits dev dependencies; this entry makes
+#                            the omission a recorded choice rather than a side effect. The
+#                            tree is @playwright/test, typescript and @types/node -- three
+#                            devDependencies, exact-pinned by EOP-236, none of which is
+#                            compiled into the jar or bundled into ui/dist, so a finding
+#                            there is NOT a shipped vulnerability and must never be read as
+#                            a release blocker. It is the same call the supply-chain job's
+#                            preamble in .github/workflows/ci.yml already made for the
+#                            OpenCode plugin roster: an advisory against a developer tool is
+#                            a thing to know about, not a reason to block a merge of
+#                            unrelated application code. The bound that makes it safe is the
+#                            e2e job's, not this script's -- contents: read and nothing
+#                            else, no repository secrets to steal, and nothing published
+#                            from a non-push event.
+#                            RETIRING CONDITION, not an expiry date: bring e2e/ into a scan
+#                            when either the repository gains a secret the e2e job can
+#                            reach, or e2e/ gains a dependency that executes against
+#                            production data or credentials. A date is the wrong instrument
+#                            here -- it would force this paragraph to be re-argued on a
+#                            calendar while the two things that actually change the
+#                            calculus went unwatched. Whoever adds that secret owns
+#                            revisiting this.
 #
 # Two passes, and only one of them gates. Trivy suppresses development and test dependencies
 # by default, so the gating pass sees what reaches production -- Maven compile and runtime
