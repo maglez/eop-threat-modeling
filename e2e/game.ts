@@ -204,7 +204,10 @@ export async function createSession(seat: Seat): Promise<string> {
     const code = await seat.page.locator('.govuk-inset-text strong').first().textContent();
     expect(code, 'the lobby rendered no join code').not.toBeNull();
     const joinCode = (code ?? '').trim();
-    expect(joinCode, `join code ${joinCode} is not eight characters`).toHaveLength(8);
+    // Assert on the length, never on the code. A custom expect() message becomes a step title
+    // even when the assertion passes, and a failing matcher also prints its received value —
+    // so asserting the string itself would publish it through either channel (ADR-071).
+    expect(joinCode.length, `the lobby's join code is ${joinCode.length} characters, not eight`).toBe(8);
     return joinCode;
 }
 
