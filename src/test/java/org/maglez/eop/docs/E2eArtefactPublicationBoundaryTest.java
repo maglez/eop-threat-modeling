@@ -226,13 +226,13 @@ class E2eArtefactPublicationBoundaryTest {
         final String readme = Files.readString(E2E_README);
 
         assertThat(readme)
-                .as("EOP-228's third requirement is that the outcome is stated where the next author will read it")
-                .contains("ADR-071");
-        assertThat(readme)
                 .as(
-                        "ADR-069 and ADR-070 exist and are about the SSE doorbell and an open-in-view connection leak. "
-                                + "A sentence promising ADR-069 will cover CI and report publication is a dangling "
-                                + "reference to a decision that was numbered elsewhere.")
+                        "EOP-228's third requirement is that the outcome is stated where the next author will read it, so "
+                                + "this file must cite ADR-071 and must not cite ADR-069. ADR-069 and ADR-070 exist and are "
+                                + "about the SSE doorbell and an open-in-view connection leak, so a sentence promising "
+                                + "ADR-069 will cover CI and report publication is a dangling reference to a decision that "
+                                + "was numbered elsewhere.")
+                .contains("ADR-071")
                 .doesNotContain("ADR-069");
     }
 
