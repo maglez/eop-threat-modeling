@@ -50,9 +50,11 @@ import org.junit.jupiter.api.Test;
  * <p><strong>What this test does not do.</strong> It proves that no interpolation in {@code e2e/}
  * reveals a secret value, that the {@code eop_session} read is reduced to a boolean in the browser,
  * that no workflow step publishes {@code playwright-report/} to Pages, and that
- * {@code e2e/README.md} records the outcome. It cannot prove a future publication step is safe: CI
- * has no E2E wiring at all yet -- EOP-220 adds it and EOP-221 publishes -- so the workflow rule here
- * is preventive, and a sufficiently novel step will evade a text matcher. It equally cannot prove the
+ * {@code e2e/README.md} records the outcome. It cannot prove a future publication step is safe:
+ * EOP-220 has since added the {@code e2e} job, which uploads {@code playwright-report/} as an
+ * Actions artefact but publishes nothing to Pages, and EOP-221's publication step does not exist
+ * yet -- so the workflow rule here remains preventive against that step, and a sufficiently novel
+ * step will evade a text matcher. It equally cannot prove the
  * HTML report is free of secrets, because ADR-071 decides it never will be. Those bounds stay
  * reviewer-enforced, and EOP-221's own Definition-of-Done round is where they land.
  */
@@ -62,7 +64,7 @@ class E2eArtefactPublicationBoundaryTest {
     /** The Playwright package. Its {@code node_modules} and run output are not sources. */
     private static final Path E2E_DIR = Path.of("e2e");
 
-    /** The workflow directory. EOP-220 and EOP-221 add E2E steps here; none exists today. */
+    /** The workflow directory. EOP-220 added the {@code e2e} job here; EOP-221's publication step does not exist yet. */
     private static final Path WORKFLOW_DIR = Path.of(".github", "workflows");
 
     /** The prose that must carry the outcome, per EOP-228's third requirement. */
