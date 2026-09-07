@@ -5,8 +5,11 @@ real container stack. It is the fourth test tier in this repository, alongside t
 JUnit unit tests, the Spring integration/API tests and the k6 load tests.
 
 See [ADR-068](../docs/adr/ADR-068-playwright-e2e-testing.md) for the decisions
-behind this directory. How the suite runs in CI and publishes its report is ADR-069's
-subject, which is not yet written — it is due with `EOP-220`.
+behind this directory. **Which artefacts may be published, and to whom, is
+[ADR-071](../docs/adr/ADR-071-e2e-artefact-publication-boundary.md) — read it before
+wiring the report into CI.** How the suite *runs* in CI is still unwritten and is due
+with `EOP-220`; it has no ADR number reserved, because 069 and 070 were taken by
+unrelated decisions while this directory was being built.
 
 ## What it tests
 
@@ -94,6 +97,72 @@ The body check is not belt-and-braces. A Caddy instance that matched the wrong r
 or no site block at all, answers `200` with an empty body — so a status-only check
 would wave through precisely the misconfiguration most likely to occur.
 
+## What may be published, and where — read this before wiring CI
+
+**The HTML report is confidential. It is a collaborator-only artefact and must never
+be served from GitHub Pages or any other world-readable destination.** The decision,
+the measurements behind it and the rejected alternatives are
+[ADR-071](../docs/adr/ADR-071-e2e-artefact-publication-boundary.md); this is the
+summary the next author needs.
+
+| Artefact | Contains a secret? | Destination |
+|---|---|---|
+| `results.json` | No — verified on a passing and a failing run | The world-readable page `EOP-221` builds. This is the **only** artefact that may be published publicly |
+| `playwright-report/` (incl. `data/`) | **Yes, on every run** — a live join code per session, twice over | GitHub Actions artifact only, readable by repository collaborators |
+| `test-results/` (`trace.zip`, PNGs, `error-context.md`) | **Yes, on failure** — live player tokens, verbatim | GitHub Actions artifact only |
+
+**So: a trace is never safe to publish, and neither is the HTML report — not even from a
+run that passed.** That last clause is the counter-intuitive part and the reason this
+section exists. Playwright's `html` reporter embeds its whole step tree as a base64 zip
+inside a `<template id="playwrightReportBase64">` element, and a step title records both
+a custom `expect()` message and the value handed to `locator.fill()` — on success as
+well as on failure. Decoding that element on a green 15/15 run recovered **12 distinct
+live join codes**. Player *tokens* behave as you would expect and appear only in a
+failing run's `trace.zip`, so the two secrets have different profiles and only one of
+them is failure-conditional.
+
+`fill()` embedding the join code cannot be fixed here: typing a real code into
+`#join-code` is what this tier is *for*, and suppressing the step would mean not
+exercising real user input. That is why the control is the destination rather than the
+content, and why `E2eArtefactPublicationBoundaryTest` in `src/test/java/org/maglez/eop/docs/`
+fails `./mvnw verify` if a workflow step names `playwright-report` alongside a Pages
+publisher.
+
+Two rules for writing scenarios, both build-enforced by that test:
+
+- **Never interpolate a secret into an assertion message.** A custom `expect()` message
+  becomes a step title whether or not the assertion fires, so
+  `` expect(joinCode, `join code ${joinCode} …`) `` published the code on every green
+  run. Report a length or an identifier — `createSession` now says
+  `` `the lobby's join code is ${joinCode.length} characters, not eight` ``.
+- **Never return a secret from `page.evaluate`.** Compare it in the page and return a
+  boolean. The reload scenario evaluates
+  `sessionStorage.getItem('eop_session') !== null`, because non-nullness is all it needs;
+  returning the value pulled `{playerToken, playerId, sessionId}` into the test process,
+  where the trace records it.
+
+To re-check the report yourself after changing a scenario — this works on a **passing**
+run, which is the point:
+
+```bash
+python3 - <<'EOF'
+import base64, io, re, zipfile
+src = open('playwright-report/index.html', encoding='utf-8').read()
+m = re.search(r'<template id="playwrightReportBase64">data:application/zip;base64,(.*?)</template>', src, re.S)
+z = zipfile.ZipFile(io.BytesIO(base64.b64decode(m.group(1).strip())))
+for n in z.namelist():
+    body = z.read(n).decode('utf-8', 'replace')
+    print(n, sorted(set(re.findall(r'"title":"(?:join code |Fill \\")([A-Z0-9]{8})', body))))
+EOF
+```
+
+A non-empty list is a leak into the report. It is expected to be non-empty for the
+`Fill` channel and must be empty for the `join code` channel.
+
+When `EOP-221` lands and a report URL exists, it belongs in this section, next to the
+table that says what is behind it.
+
+
 ## Escape hatches
 
 Three environment variables, all off by default. Each is read with a strict parser
@@ -172,6 +241,9 @@ e2e/
   global-teardown.ts    # compose down -v
   tests/
     smoke.spec.ts       # asserts the home screen h1 renders
+    happy-path.spec.ts  # full lifecycle: create, join, start, play, complete, reload
+    boundary.spec.ts    # refusals — bad join code, full session, non-facilitator start
+    leaderboard.spec.ts # results across sessions, ordering and the whole-history read
 ```
 
 `stack.ts` exists so setup and teardown cannot drift apart on which compose file or
