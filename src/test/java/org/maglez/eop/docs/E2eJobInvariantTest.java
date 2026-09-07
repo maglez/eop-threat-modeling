@@ -86,9 +86,15 @@ class E2eJobInvariantTest {
     private static final int MINIMUM_E2E_JOB_STEPS = 10;
 
     /**
-     * Matches a job key: two spaces of indent, a name, a colon, end of line. Indentation is the discriminator throughout this
+     * Matches a key at two spaces of indent: a name, a colon, end of line. Indentation is the discriminator throughout this
      * test -- job keys sit at two spaces, job-level keys at four, step list items at six and step-level keys at eight -- which
      * is what keeps a job-level {@code if:} from being confused with the six step-level {@code if: always()} lines in this job.
+     *
+     * <p>Two spaces of indent is not by itself unique to a job, and the pattern is deliberately not claimed to be: the
+     * {@code on:} block's trigger keys ({@code push:}, {@code schedule:}, {@code workflow_dispatch:}) sit at the same depth.
+     * That costs nothing here because {@link #jobBlock(String)} is only ever asked for a job by name and neither {@code e2e}
+     * nor {@code image} is a trigger name -- but a job named after a trigger would be shadowed by the earlier match, so look
+     * up a job by name rather than treating a match on this pattern as proof that a job was found.
      */
     private static final Pattern JOB_KEY = Pattern.compile("(?m)^ {2}([A-Za-z][\\w-]*):[ \\t]*$");
 
