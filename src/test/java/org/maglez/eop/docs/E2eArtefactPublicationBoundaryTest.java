@@ -75,18 +75,31 @@ class E2eArtefactPublicationBoundaryTest {
     private static final int MINIMUM_E2E_SOURCES = 9;
 
     /**
-     * Identifiers whose value is a secret or reveals one, as whole-word patterns. {@code stored} is
-     * the local the happy-path reload scenario binds; it is included because the defect ADR-071 fixes
-     * was its being bound to a raw value at all. Bare {@code code} is the local {@code game.ts} binds
-     * from the lobby DOM, and the boundary is what keeps {@code exitCode} and {@code statusCode} --
-     * both legitimate in an error message from {@code stack.ts} -- out of the match.
+     * Identifiers whose value is a secret or reveals one, as whole-word patterns. Bare {@code code}
+     * is the local {@code game.ts} binds from the lobby DOM, and the boundary is what keeps
+     * {@code exitCode} and {@code statusCode} -- both legitimate in an error message from
+     * {@code stack.ts} -- out of the match.
+     *
+     * <p>{@code stored} matches nothing in {@code e2e/} today, and that is deliberate rather than
+     * stale. It was the name of the local the happy-path reload scenario bound to the raw
+     * {@code eop_session} value, which is the defect ADR-071 fixes; the fix renamed it
+     * {@code hasSession} because it now holds a boolean. The entry is retained so the defect cannot
+     * return under its original name -- a future author reintroducing
+     * {@code const stored = await page.evaluate(() => sessionStorage.getItem('eop_session'))} is
+     * caught by rule three rather than merely reviewed. Do not read a zero match count as evidence
+     * the entry is dead: every rule here carries its own floor over the file list, so an entry that
+     * currently matches nothing cannot make a rule pass vacuously.
      */
     private static final List<Pattern> SECRET_IDENTIFIERS = Stream.of(
                     "joinCode", "playerToken", "eop_session", "stored", "code")
             .map(name -> Pattern.compile("(?<![A-Za-z0-9_])" + name + "(?![A-Za-z0-9_])"))
             .toList();
 
-    /** A template-literal interpolation, captured non-greedily so nested braces end the match. */
+    /**
+     * A template-literal interpolation. The class is restricted rather than the quantifier lazy, so a
+     * nested brace ends the match -- {@code ${f({joinCode})}} is therefore not seen, and stays a
+     * reviewer's problem.
+     */
     private static final Pattern INTERPOLATION = Pattern.compile("\\$\\{([^{}]*)}");
 
     /** The storage read. ADR-071 requires it be compared in the browser, never returned. */
