@@ -99,17 +99,21 @@ would wave through precisely the misconfiguration most likely to occur.
 
 ## What may be published, and where — read this before wiring CI
 
-**The HTML report is confidential. It is a collaborator-only artefact and must never
-be served from GitHub Pages or any other world-readable destination.** The decision,
-the measurements behind it and the rejected alternatives are
+**The HTML report must never be served from GitHub Pages or any other page this repository
+publishes.** Note what that sentence does *not* say. This repository is **public**, so a
+GitHub Actions artefact and a CI job log are world-readable too — there is no private
+destination in this pipeline. The report's remaining exposure as an artefact is therefore
+explicitly *accepted*, on the reasoning that a leaked join code names a session already
+destroyed by `down -v`, and not *contained*. The decision, the measurements behind it, the
+channels it leaves open and the rejected alternatives are
 [ADR-071](../docs/adr/ADR-071-e2e-artefact-publication-boundary.md); this is the
 summary the next author needs.
 
 | Artefact | Contains a secret? | Destination |
 |---|---|---|
-| `results.json` | No — verified on a passing and a failing run | The world-readable page `EOP-221` builds. This is the **only** artefact that may be published publicly |
-| `playwright-report/` (incl. `data/`) | **Yes, on every run** — a live join code per session, twice over | GitHub Actions artifact only, readable by repository collaborators |
-| `test-results/` (`trace.zip`, PNGs, `error-context.md`) | **Yes, on failure** — live player tokens, verbatim | GitHub Actions artifact only |
+| `results.json` | No — verified on a passing and a failing run, and kept that way by the length-only assertion in `game.ts` | The world-readable page `EOP-221` builds. This is the **only** artefact that may be published as the page |
+| `playwright-report/` (incl. `data/`) | **Yes, on every run** — a live join code per session, twice over | Actions artefact only, never the page. World-readable even so; see the acceptance in ADR-071 |
+| `test-results/` (`trace.zip`, PNGs, `error-context.md`) | **Yes, on failure** — live player tokens, verbatim | Actions artefact only, never the page |
 
 **So: a trace is never safe to publish, and neither is the HTML report — not even from a
 run that passed.** That last clause is the counter-intuitive part and the reason this
@@ -128,13 +132,19 @@ content, and why `E2eArtefactPublicationBoundaryTest` in `src/test/java/org/magl
 fails `./mvnw verify` if a workflow step names `playwright-report` alongside a Pages
 publisher.
 
-Two rules for writing scenarios, both build-enforced by that test:
+Three rules for writing scenarios, all build-enforced by that test:
 
 - **Never interpolate a secret into an assertion message.** A custom `expect()` message
   becomes a step title whether or not the assertion fires, so
   `` expect(joinCode, `join code ${joinCode} …`) `` published the code on every green
   run. Report a length or an identifier — `createSession` now says
   `` `the lobby's join code is ${joinCode.length} characters, not eight` ``.
+- **Never assert *on* a secret value either.** A custom message is not enough: a failing
+  matcher prints the value it received back, so `expect(joinCode, msg).toHaveLength(8)`
+  emits `Received string: "…"` alongside your message, into both the report and
+  `results.json`. Assert on the derived quantity instead — `createSession` uses
+  `expect(joinCode.length, msg).toBe(8)`. The one exception the gate allows is
+  `.not.toBeNull()`, which can only fail when the value *is* null and so can never print it.
 - **Never return a secret from `page.evaluate`.** Compare it in the page and return a
   boolean. The reload scenario evaluates
   `sessionStorage.getItem('eop_session') !== null`, because non-nullness is all it needs;
@@ -158,6 +168,19 @@ EOF
 
 A non-empty list is a leak into the report. It is expected to be non-empty for the
 `Fill` channel and must be empty for the `join code` channel.
+
+Three channels this does **not** cover, which matter when you wire CI:
+
+- **The job log.** `['list']` prints to stdout, and a CI log on a public repository is
+  world-readable. Measured on four real passing runs it carries no step tree and no join
+  code, but a *failing* assertion message reaches it — which is the second reason the
+  length-only rule above exists.
+- **Container logs.** `E2E_REUSE_STACK` exists so CI can collect them after the tests, and
+  the join code is a URL path segment (`/api/v1/sessions/{joinCode}/players`), so every
+  Caddy access line for a join request contains a live one. Publishing those logs inherits
+  ADR-071's acceptance.
+- **`blob-report/`.** Not produced by this configuration, but it is a merge-ready form of
+  the same step tree, so it is subject to the same rule as `playwright-report/`.
 
 When `EOP-221` lands and a report URL exists, it belongs in this section, next to the
 table that says what is behind it.

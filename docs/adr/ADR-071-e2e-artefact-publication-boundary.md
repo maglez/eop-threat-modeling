@@ -1,4 +1,4 @@
-# ADR-071: The E2E HTML report is collaborator-only; the world-readable page is built from `results.json`
+# ADR-071: The E2E page is built from `results.json`; the HTML report's residual exposure is accepted, not contained
 
 **Status:** Accepted
 
@@ -83,9 +83,17 @@ failure-conditional:
 - **Join codes leak on every run, pass or fail**, via the embedded step tree.
 - **Player tokens leak only on failure**, via `trace.zip`.
 
-`results.json` is clean on both runs — 0 occurrences of `eop_session`, `playerToken` and every
-join code observed. That is structural rather than lucky: the `json` reporter records no step
-tree, whereas the `html` reporter embeds the whole one.
+`results.json` was clean on both runs — 0 occurrences of `eop_session`, `playerToken` and every
+join code observed. Part of that is structural: the `json` reporter records no step tree, whereas
+the `html` reporter embeds the whole one. But it was **not** unconditionally clean, and an earlier
+draft of this ADR said it was. `results.json` carries `errors[].message`, and a failing matcher
+prints the value it received back into that message: `expect(joinCode, msg).toHaveLength(8)` emits
+`Received string: "ABC"` alongside the custom message, proven directly against
+`@playwright/test`'s `expect`. So the *old* `game.ts` assertion would have published a join code
+through this supposedly clean channel on any run where the lobby rendered a malformed code. It is
+clean **given** the source fix in layer 3, which asserts on `joinCode.length` — a number the
+matcher may print freely — rather than on the string. That is why layer 3 is load-bearing and not
+merely tidy.
 
 ### Why the exposure is bounded even so
 
@@ -98,25 +106,74 @@ environment, and publishing credentials teaches the wrong reflex regardless.
 
 ## Decision
 
-**The `html` reporter's output is treated as confidential and never reaches a world-readable
-destination. The world-readable page EOP-221 builds is generated from `results.json` alone.**
+**The world-readable page EOP-221 builds is generated from `results.json` alone. The `html`
+reporter's output never becomes that page — and because this repository is public, its remaining
+exposure as a build artefact is explicitly accepted rather than contained.**
 
-Four layers, each independently checkable:
+That second clause is a correction. An earlier draft of this ADR called `playwright-report/` a
+"collaborator-only artefact" and treated the GitHub Actions artifact as a private destination.
+**That was false.** `gh repo view --json isPrivate,visibility` returns
+`{"isPrivate":false,"visibility":"PUBLIC"}` for `maglez/eop-threat-modeling`, and on a public
+repository Actions artifacts and workflow logs are **world-readable to anyone with the URL**.
+There is no private destination available in this pipeline at all. Pretending otherwise would have
+made this ADR assert a control that does not exist, which is worse than admitting the exposure —
+so the decision below takes EOP-228's *third* permitted option for everything the first two
+layers do not remove.
 
-1. **Destination split by access model.** GitHub Pages — world-readable — is built only from
-   `results.json`. `playwright-report/` in its entirety, including `data/` and the bundled trace
-   viewer, is published only as a **GitHub Actions artifact**, which is readable by repository
-   collaborators and not by the public. EOP-221 is constrained accordingly.
-2. **Containment, not deletion.** Full-fidelity diagnostics remain available to the people who
-   need them. Nothing about a developer's ability to debug a failure changes; only the audience
-   does.
-3. **Source hardening**, closing the one avoidable channel. `game.ts` reports the join code's
-   *length* instead of its value, which is better diagnostics as well as safer, and the
-   happy-path reload scenario evaluates `sessionStorage.getItem('eop_session') !== null` in the
-   browser rather than returning the value into the test process — non-nullness is all the
-   assertion ever needed.
+Four layers. The first is a control; the second is an acceptance; the third and fourth are
+hardening.
+
+1. **Destination split by artefact, not by audience.** GitHub Pages is built only from
+   `results.json`, which is measurably free of join codes and tokens given layer 3.
+   `playwright-report/` in its entirety — `data/`, the bundled trace viewer and the embedded step
+   tree — is never published as the page. This is the one layer that genuinely subtracts, and it
+   removes 100% of the token material and the visual representations, because those exist only
+   inside `trace.zip` and `data/`.
+2. **Accepted residual exposure.** `playwright-report/` and `test-results/` are still uploaded as
+   Actions artefacts so failures can be debugged, and on a public repository that upload is
+   world-readable. The join codes in the embedded step tree and the tokens in `trace.zip` are
+   therefore *published*, to anyone who looks. **This is accepted, for the reasons in "Why the
+   exposure is bounded even so" above**: no authentication exists anywhere in the application
+   (ADR-015), a player token authorises only actions inside one game session, and
+   `global-teardown.ts` runs `down -v`, so the Postgres volume and every session in it are
+   destroyed before the artefact is downloadable. What is published is a credential for a session
+   that no longer exists. The acceptance is bounded and self-retiring: **it must be revisited the
+   moment the E2E suite points at any environment whose data outlives the run**, at which point
+   the only remaining options are a private repository, dropping the artefact upload, or a
+   scrubber with the problems set out below.
+3. **Source hardening**, closing the two avoidable channels. `game.ts` asserts on the join code's
+   *length* rather than the string, which keeps the failing matcher from printing the code back as
+   its received value and keeps the passing step title free of it. The happy-path reload scenario
+   evaluates `sessionStorage.getItem('eop_session') !== null` in the browser rather than returning
+   the value into the test process — non-nullness is all the assertion ever needed.
 4. **A build gate**, `E2eArtefactPublicationBoundaryTest`, pinning the parts of this that are
    mechanically checkable so the decision cannot regress silently.
+
+### Channels this decision does not close
+
+Enumerating them is part of the acceptance. A reader who believes the list above is exhaustive
+would draw a stronger conclusion than the evidence supports.
+
+- **The `list` reporter's stdout.** `playwright.config.ts` keeps `['list']`, whose output is the
+  CI job log — world-readable on this public repository, exactly like the artefacts. Measured
+  mitigation: four real Playwright stdout logs from passing runs (18,085, 17,803, 7,369 and 2,307
+  bytes) contain **0** occurrences each of `eop_session`, `playerToken`, `join code`, `Fill `,
+  `fill(` and `Share this code`, and no 8-character join-code candidates. The `list` reporter
+  prints test titles and statuses, not the step tree, which is why. That is a measurement over
+  passing runs, not a guarantee: a *failing* assertion's message reaches stdout too, which is a
+  second reason layer 3 matters.
+- **Container and reverse-proxy access logs.** `E2E_REUSE_STACK` exists so CI owns the stack and
+  can collect container logs *after* the tests. The join code is a URL path segment —
+  `docs/api/openapi.yml` declares `/api/v1/sessions/{joinCode}/players`, and `ui/src/api.ts`
+  fetches exactly that — so every Caddy access line for a join request carries a live join code.
+  Any decision to publish those logs inherits this ADR's acceptance and should say so.
+- **`blob-report/` and `.last-run.json`.** Gitignored and not produced by the current
+  configuration, but both are Playwright outputs and `blob-report/` is a merge-ready form of the
+  same step tree. Neither may be published as the page.
+
+None of these is closed here, and none is a reason to weaken layer 1. They are recorded so that
+"EOP-228 is closed" is read as "the page is safe and the rest is accepted with reasons", not as
+"no join code is ever visible".
 
 ### Why not scrubbing
 
@@ -137,8 +194,10 @@ removes 100% of the recovered material, and the check is "did the public page re
 It cannot be closed without damaging the tier. Setting the input value through `page.evaluate`
 would suppress the step title but stop exercising real user input, which is the entire reason
 this tier exists rather than another integration test. So layer 3 deliberately closes one
-channel and not the other, and layer 1 carries the weight. This is worth stating plainly: **the
-HTML report will always contain join codes, by design, and its confidentiality is the control.**
+channel and not the other. This is worth stating plainly: **the HTML report will always contain
+join codes, by design, and there is no destination in this pipeline that keeps them private.** The
+control is that the report is not the published page; the residual is accepted under layer 2 and
+bounded by the session being destroyed before anyone can read the artefact.
 
 ## Consequences
 
@@ -160,18 +219,21 @@ the local developer experience changes: `npm run report` still opens the full re
 finding is about where artefacts go, not whether they exist. `video` remains inert for this
 suite's hand-built contexts, which is recorded here so the next author does not read the setting
 as working; fixing it is not required by this decision and would only add a fourth
-representation of the same secrets to a channel that is already contained.
+representation of the same secrets to a channel whose residual is already accepted.
 
 **What the build gate does and does not prove.** `E2eArtefactPublicationBoundaryTest` reads
 repository files as text, in the tradition of the other seventeen classes in
-`src/test/java/org/maglez/eop/docs/`. It fails the build if a custom `expect()` message in
-`e2e/` interpolates a join code or token, if the happy-path scenario returns a raw `eop_session`
-value into the test process, or if a workflow step is added that publishes `playwright-report/`
-to the Pages branch. It cannot prove that a future publication step is safe — CI does not exist
-yet, and a sufficiently novel step will evade a text matcher. It converts the two specific
-regressions that have actually been measured here into build failures, and it makes the decision
-discoverable from the test tree. The remaining enforcement is review, and EOP-221's own
-Definition-of-Done round is where it lands.
+`src/test/java/org/maglez/eop/docs/`. Five rules. It fails the build if a custom `expect()`
+message in `e2e/` interpolates a join code or token; if an `expect()` is *asserted on* a secret
+value, since a failing matcher prints its received value back; if the happy-path scenario returns
+a raw `eop_session` value into the test process; if a workflow step is added that publishes
+`playwright-report/` to the Pages branch; and if `e2e/README.md` stops recording the outcome. Each
+rule was positive-controlled by reintroducing the regression and watching it fail, not merely
+observed passing. It cannot prove that a future publication step is safe — CI does not exist yet,
+and a sufficiently novel step will evade a text matcher. It converts the specific regressions that
+have actually been measured here into build failures, and it makes the decision discoverable from
+the test tree. The remaining enforcement is review, and EOP-221's own Definition-of-Done round is
+where it lands.
 
 **A green run is now evidence of something.** Before this change, the ticket's own instruction —
 verify against a failed run, because a green run proves nothing — was sound advice built on a

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Fails the build if the Playwright suite reintroduces a secret into a publishable artefact, or if a
- * workflow publishes the HTML report to a world-readable destination.
+ * workflow publishes the HTML report as this repository's public page.
  *
  * <p>ADR-071 records the measurement behind this. The finding filed as EOP-228 was
  * failure-conditional: {@code trace}, {@code screenshot} and {@code video} fire on failure, and a
@@ -34,7 +34,10 @@ import org.junit.jupiter.api.Test;
  * every green run. And {@code locator.fill()} records the filled value in its own step title, which
  * is inherent to typing a join code into {@code #join-code}. ADR-071 closes the first and
  * deliberately leaves the second, because suppressing it would mean not exercising real user input.
- * The control for the second is that the HTML report never reaches a world-readable destination.
+ * The control for the second is that the HTML report is never the published page. It is <em>not</em>
+ * that the report is private: this repository is public, so an Actions artefact is world-readable
+ * too, and ADR-071 accepts that residual explicitly rather than claiming a containment that does not
+ * exist.
  *
  * <p><strong>Why a text gate rather than a scrubber.</strong> The secrets exist in at least six
  * representations -- API response bodies in the trace's {@code resources/*.json}, DOM snapshots,
@@ -89,6 +92,15 @@ class E2eArtefactPublicationBoundaryTest {
     /** The storage read. ADR-071 requires it be compared in the browser, never returned. */
     private static final Pattern SESSION_STORAGE_READ =
             Pattern.compile("getItem\\(\\s*'eop_session'\\s*\\)\\s*(.{0,4})", Pattern.DOTALL);
+
+    /** An {@code expect()} subject -- the value a failing matcher prints back as "Received". */
+    private static final Pattern ASSERTED_VALUE = Pattern.compile("expect\\(\\s*([A-Za-z0-9_.]+)\\s*[,)]");
+
+    /**
+     * The one matcher that may take a secret directly. {@code not.toBeNull()} can only fail when
+     * the received value <em>is</em> null, so it can never print the secret back.
+     */
+    private static final String NULL_MATCHER = ".not.toBeNull()";
 
     /** Markers of a world-readable publication. {@code e2e-report} is EOP-221's orphan branch. */
     private static final List<String> PAGES_MARKERS =
@@ -150,6 +162,35 @@ class E2eArtefactPublicationBoundaryTest {
     }
 
     @Test
+    @DisplayName("no assertion in e2e/ prints a secret back as its received value")
+    void noAssertionPrintsASecretAsItsReceivedValue() throws IOException {
+        final List<String> offences = new ArrayList<>();
+        final List<Path> sources = e2eSources();
+        for (final Path source : sources) {
+            final String[] lines = Files.readString(source).split("\n", -1);
+            for (int line = 0; line < lines.length; line++) {
+                final Matcher matcher = ASSERTED_VALUE.matcher(lines[line]);
+                while (matcher.find()) {
+                    final String subject = matcher.group(1);
+                    if (namesASecret(subject) && !subject.endsWith(".length") && !lines[line].contains(NULL_MATCHER)) {
+                        offences.add("%s:%d asserts on %s".formatted(source, line + 1, subject));
+                    }
+                }
+            }
+        }
+
+        assertThat(sources)
+                .as("the e2e sources must be found -- an empty list would pass this rule vacuously")
+                .hasSizeGreaterThanOrEqualTo(MINIMUM_E2E_SOURCES);
+        assertThat(offences)
+                .as(
+                        "a failing matcher prints its received value, so asserting on a secret publishes it even when "
+                                + "the custom message does not. Assert on a bound instead -- expect(code.length).toBe(8) "
+                                + "prints a number (ADR-071).")
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("no workflow step publishes playwright-report/ to a world-readable destination")
     void noWorkflowPublishesTheHtmlReportPublicly() throws IOException {
         if (!Files.isDirectory(WORKFLOW_DIR)) {
@@ -174,7 +215,7 @@ class E2eArtefactPublicationBoundaryTest {
         assertThat(offences)
                 .as(
                         "The html reporter embeds its whole step tree, which carries a live join code on every run "
-                                + "including a passing one, so playwright-report/ is a collaborator-only artifact. The "
+                                + "including a passing one, so playwright-report/ must never become the published page. The "
                                 + "world-readable page is built from results.json alone (ADR-071).")
                 .isEmpty();
     }
@@ -197,9 +238,13 @@ class E2eArtefactPublicationBoundaryTest {
 
     /** @return whether an interpolated expression yields a secret rather than a bound on one */
     private static boolean revealsASecret(final String expression) {
-        final boolean named = SECRET_IDENTIFIERS.stream().anyMatch(p -> p.matcher(expression).find());
         // `.length` bounds the value without revealing it, which is the shape ADR-071 substitutes.
-        return named && !expression.endsWith(".length");
+        return namesASecret(expression) && !expression.endsWith(".length");
+    }
+
+    /** @return whether the expression mentions one of the secret-bearing identifiers */
+    private static boolean namesASecret(final String expression) {
+        return SECRET_IDENTIFIERS.stream().anyMatch(pattern -> pattern.matcher(expression).find());
     }
 
     /** @return every hand-written TypeScript source under {@code e2e/}, excluding dependencies */

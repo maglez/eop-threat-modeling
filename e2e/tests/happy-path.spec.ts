@@ -292,8 +292,8 @@ test.describe('Happy path: the full game lifecycle', () => {
             // Evaluate to a boolean, never to the stored value: `eop_session` holds
             // {playerToken, playerId, sessionId}, and a value returned into the test process
             // is recorded in the trace. Non-nullness is all this assertion needs (ADR-071).
-            const stored = await facilitator.page.evaluate(() => window.sessionStorage.getItem('eop_session') !== null);
-            expect(stored, 'eop_session was cleared by the reload').toBe(true);
+            const hasSession = await facilitator.page.evaluate(() => window.sessionStorage.getItem('eop_session') !== null);
+            expect(hasSession, 'eop_session was cleared by the reload').toBe(true);
         } finally {
             await closeSeats(seats);
         }
