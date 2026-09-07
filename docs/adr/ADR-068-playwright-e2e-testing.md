@@ -279,6 +279,7 @@ Two deliberate divergences, recorded here so neither reads as an oversight:
 - `e2e/README.md` — how to run it, and every constraint restated operationally
 - `e2e/playwright.config.ts`, `e2e/stack.ts`, `e2e/global-setup.ts`, `e2e/global-teardown.ts`
 - `e2e/tests/smoke.spec.ts` — the only scenario in the scaffold story
+- `e2e/tests/leaderboard.spec.ts` — the end-of-game summary screen (`EOP-219`)
 - ADR-069 (not yet written, due with `EOP-220`) — how this suite runs in CI and publishes its report
 - [ADR-014](ADR-014-realtime-transport.md) — the SSE doorbell the suite waits on
 - [ADR-017](ADR-017-frontend-delivery-topology.md) — single origin, which is why one Caddy fronts both
@@ -483,3 +484,137 @@ EOP-218:
   the mid-game lockout and the LOBBY ghost seat).
 - **EOP-232** — `LobbyScreen.tsx:37` duplicates the minimum-players rule as a hardcoded `3`;
   `e2e/game.ts:31` (anchor: `MINIMUM_PLAYERS_TO_START`) is a legitimate third copy.
+
+## Amendment, 2026-09-06 (EOP-219)
+
+EOP-219 delivered the leaderboard suite (`e2e/tests/leaderboard.spec.ts`), covering the end-of-game
+summary screen. Four of the ticket's five acceptance criteria described behaviour the application
+does not have, so they were rewritten before any test was written — the same pattern as EOP-218,
+and for the same reason: the criteria were authored from the API surface rather than from the code.
+
+### Finding 1 — the leaderboard is per-session, and no historical leaderboard exists
+
+The ticket asked for a scenario in which a leaderboard shows "the current game's players **and**
+historical rows from the seeded prior game". No such view exists and none is planned.
+`GetLeaderboardUseCase.java:76` (anchor: `GameNotCompletedException`) refuses any session that is
+not `COMPLETED`, and the projection it builds is scoped to the one session in the path. The
+persistence layer reinforces this: one result row is kept per session so that the leaderboard
+always reflects the latest completed game of *that* session.
+
+So there is nothing to seed. The criterion was replaced by an **isolation** scenario, which is the
+useful property in the same area: a leaderboard must show only its own session's players even
+though other completed games share the database. That is not vacuous here, because the three
+browser projects run serially against one stack, so by the time Firefox and WebKit complete their
+games Chromium's finished game is already persisted.
+
+### Finding 2 — a new game returns to `IN_PROGRESS`, never to `LOBBY`
+
+The ticket's fourth criterion expected `POST /new-game` to move the session "back to LOBBY" with
+"all players returned to the lobby screen". It does not. The use case clears tricks and hands,
+resets the session straight to `IN_PROGRESS` and deals a fresh deck to the same players in the
+same seats (`NewGameUseCase.java:130`, anchor: `resetToInProgress`).
+`SessionStatus.LOBBY` is not re-entered by any code path.
+
+The front end briefly *renders* the lobby — `ui/src/App.tsx:192` (anchor: `re-dealt`) routes the
+facilitator through `screen: 'lobby'` after the 204 — but `LobbyScreen` observes `IN_PROGRESS` and
+forwards immediately to the game screen. It is a transition, not a destination, and it is the same
+path a mid-game reload already takes (EOP-217's fourth scenario).
+
+### Finding 3 — a tie cannot be arranged, so the tie rules are asserted as invariants
+
+The ticket asked for a scenario in which "two players finish with equal points". There is no way to
+arrange that. A score is **derived, never stored**: `ScoreSheet` recomputes every total from the
+whole trick history on each read (ADR-030), so a tie cannot be seeded through SQL, and no API
+forces one. Playing towards a tie is not available either, because the outcome depends on which
+cards the shuffle dealt.
+
+The scenario therefore asserts the ranking *rules* against whatever the game produced, which holds
+for every possible outcome and is strictly stronger than one arranged case:
+
+- totals are ordered descending;
+- `position` is competition ranking — it repeats for equal totals and skips accordingly;
+- `tied` is true **exactly** when another player shares that total, asserted in both directions
+  against `ScoreSheet.java:177` (anchor: `Collections.frequency`);
+- the set at `position === 1` is non-empty, and every member's `tied` flag agrees on whether first
+  place is shared, so no player is ever rendered as sole winner of a shared lead.
+
+### Finding 4 — the flag-OFF scenario is out of scope, on EOP-218's precedent
+
+The ticket's fifth criterion asked for a run with `VITE_GAME_SCREEN_ENABLED` OFF. **Dropped, not
+rewritten**, for exactly the reason recorded in the EOP-218 amendment's Finding 6: the flag is a
+build-time Vite variable (ADR-037) baked in at `ui/Dockerfile:40`, so covering it needs a second
+image and a second stack per run, and `ui/src/App.test.tsx:190` already asserts it in milliseconds.
+`GameOverControllerDisabledIntegrationTest` covers the back-end half.
+
+Note that the leaderboard *does* sit behind a back-end flag, `eop.features.game-over`, contrary to
+the ticket's claim that no `eop.features.*` flag applies. It needs no override in `compose.e2e.yml`
+because all three back-end flags ship `true`. That flag carries an expiry of 2026-09-18 under
+ADR-042, so this suite will need a review when `EOP-83` deletes it.
+
+### Finding 5 — a participant is stranded when the facilitator starts a new game
+
+Found by this suite, filed as **EOP-233**. When the facilitator starts a second game, the
+facilitator advances to it and every other player stays mounted on the previous game's leaderboard
+indefinitely.
+
+The cause is an absent subscription. `LobbyScreen` and `GameScreen` both open a session
+subscription; `GameOverScreen` opens none — it fetches the leaderboard once on mount. So although
+`NewGameUseCase` publishes `HAND_DEALT` before the 204 returns, no subscriber exists on that page
+to act on it. The facilitator moves only because its own `onNewGame` callback navigates it locally.
+
+This is not a race. The event is published before the response the facilitator's navigation depends
+on, so any subscriber would already have been notified by the time the facilitator's new hand
+renders — which is what makes the scenario deterministic rather than flaky.
+
+A reload recovers the stranded player, via `sessionStorage` and the transitional lobby, which is why
+EOP-233 is rated medium rather than a lockout. The scenario pins **current** behaviour, says so in
+a comment naming the ticket, and asserts the reload escape; the two assertions that encode the
+defect carry failure messages telling a future fixer to invert them.
+
+The scenario is self-checking in a way worth noting, because a test asserting an absence usually is
+not: the same hand locator is asserted absent while stranded and then present after the reload
+within one test, so a broken locator cannot produce a false pass.
+
+### Design decision — capture the response the UI already made
+
+`e2e/tests/leaderboard.spec.ts:170` (anchor: `captureLeaderboards`) installs a `page.on('response')`
+listener before the game completes and keeps the last parsed leaderboard body. Every rendered cell
+is then compared against the payload the server actually sent, including `sessionStatus`, which the
+screen does not render at all.
+
+This was chosen over re-issuing the request from the test. Doing that would require the
+player-token header name, and asserting against a *second* response would prove only that two
+requests agree — not that the table on screen matches the bytes that produced it. The capture also
+keeps the suite honest about the tier: nothing is stubbed and no request is intercepted.
+
+`e2e/tests/leaderboard.spec.ts:82` (anchor: `STRIDE_COLUMNS`) mirrors the six STRIDE column labels
+in canonical order, so a column reordering or a renamed header fails here as well as in the
+front-end unit tests.
+
+### Design decision — one deck per engine, in a serial describe block
+
+A complete game is 68 plays (EOP-217, Finding 3) and takes minutes per engine. Four scenarios each
+playing their own game would have tripled the suite's runtime for no additional coverage, since all
+four interrogate the same completed game.
+
+The block is therefore `test.describe.serial`, with a `beforeAll` that forms the session, plays the
+deck out and reaches game-over on every seat; the four scenarios assert against that one fixture,
+and the destructive new-game scenario is declared **last**. This is safe because
+`playwright.config.ts` already runs `workers: 1` with `fullyParallel: false`. The visible effect is
+that the leaderboard tests report single-digit millisecond durations while their shared setup
+carries the whole cost.
+
+### Test evidence
+
+`cd e2e && npx playwright test --reporter=list` → **45 passed (2.5m)**, 1 worker, zero
+failures/flakes/skips, green on first execution. 15 tests per project across chromium, firefox and
+webkit: 6 boundary + 4 happy-path + 4 leaderboard + 1 smoke. The pre-existing 33 tests are
+unchanged and still pass.
+
+Every scenario passes against **unmodified production code**, including the two assertions that
+encode EOP-233 — that is what makes them a record of behaviour rather than of intent.
+
+### Follow-up tasks
+
+- **EOP-233** — a participant is stranded on the stale leaderboard when the facilitator starts a
+  new game. Filed as a Jira Task (the project has no Bug type), linked `Relates` to EOP-219.
