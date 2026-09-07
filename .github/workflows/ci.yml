@@ -5,25 +5,35 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  # A weekly run, for the `supply-chain` job's sake. Everything else here
-  # is a function of a commit, so running it on a commit is sufficient - but
-  # an advisory is published by someone else, against code that has not
-  # changed, so a check that only ever fires when we push cannot see one
-  # arrive. This is the trigger that makes the supply-chain job an actual
-  # tripwire rather than a slower way of learning the same thing at merge
-  # time.
+  # A nightly run, for the `supply-chain` and `e2e` jobs' sake. Everything
+  # else here is a function of a commit, so running it on a commit is
+  # sufficient - but an advisory is published by someone else, against code
+  # that has not changed, so a check that only ever fires when we push
+  # cannot see one arrive. This is the trigger that makes the supply-chain
+  # job an actual tripwire rather than a slower way of learning the same
+  # thing at merge time.
   #
-  # The other three jobs run too. That is deliberate and not a side effect
-  # worth suppressing: a weekly green on `build`, `ui` and `image` is a
-  # canary for breakage that arrives from outside the repository - a base
-  # image moving, an action deprecating, a registry changing - which is
-  # otherwise discovered by whoever happens to push next. Nothing is
-  # published, because the GHCR step is gated on `github.event_name ==
-  # 'push'`.
+  # This was `'0 6 * * 1'` (weekly, Monday) until 2026-09-07, when EOP-220
+  # wired the Playwright end-to-end suite in and needed a nightly cadence
+  # (ADR-072). It is one cron rather than two because the `e2e` job declares
+  # `needs: [image]` - it can only run in a graph that has already built the
+  # images, which is this workflow, so an `e2e`-only schedule is not
+  # available without duplicating the build. Every scheduled job therefore
+  # gained frequency; none lost any, and on a public repository Actions
+  # minutes are free, so the cost of the extra six runs a week is wall-clock
+  # on GitHub's infrastructure and nothing else.
+  #
+  # The other jobs run too. That is deliberate and not a side effect worth
+  # suppressing: a nightly green on `build`, `ui` and `image` is a canary
+  # for breakage that arrives from outside the repository - a base image
+  # moving, an action deprecating, a registry changing - which is otherwise
+  # discovered by whoever happens to push next. Nothing is published,
+  # because the GHCR step is gated on `github.event_name == 'push'`.
   schedule:
-    - cron: '0 6 * * 1'
-  # Manual trigger, so the audit can be run on demand after a pin moves
-  # without waiting for Monday or inventing a commit.
+    - cron: '0 6 * * *'
+  # Manual trigger, so the audit can be run on demand after a pin moves, or
+  # the end-to-end suite re-run against the current `main`, without waiting
+  # for tomorrow morning or inventing a commit.
   workflow_dispatch:
 
 # Least privilege, stated explicitly. The repository default is already
@@ -205,6 +215,45 @@ jobs:
             VITE_FOLLOW_SUIT_HINT_ENABLED=true
           cache-from: type=gha,scope=ui
           cache-to: type=gha,mode=max,scope=ui
+
+      # The `e2e` job runs the Playwright suite against *these* images rather
+      # than rebuilding from source, which is what makes it a test of the
+      # artifact we would ship (EOP-220, ADR-072). Jobs do not share a Docker
+      # daemon, so the images have to travel as an artifact: `docker save`
+      # here, `docker load` there.
+      #
+      # GHCR is not the vehicle, even though the push steps below already put
+      # these images there. That push is gated on `github.event_name ==
+      # 'push'`, so on the nightly schedule and on `workflow_dispatch` there
+      # would be nothing to pull but the previous commit's `:latest` - the
+      # `e2e` job would silently test a stale artifact and still report green.
+      # An artifact is the only channel that carries the images built by *this
+      # run* on every event that runs the suite.
+      #
+      # Skipped on pull requests because the `e2e` job does not run on them
+      # (see that job's `if:`), so saving and uploading ~300 MB there would be
+      # pure cost. `docker save` streams into gzip rather than writing an
+      # uncompressed tar first; the runner has the disk either way, but the
+      # upload is what dominates.
+      - name: Save images for the end-to-end job
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          mkdir -p image-export
+          docker save eop-threat-modeling:ci | gzip > image-export/app.tar.gz
+          docker save eop-ui:ci | gzip > image-export/ui.tar.gz
+          ls -lh image-export
+
+      - name: Upload images for the end-to-end job
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-images
+          path: image-export/
+          # Long enough to download in the same run and to inspect a failure
+          # the next morning; short because these are large and reproducible
+          # from the commit.
+          retention-days: 3
 
       # Nothing before this point proves the artifact starts. `mvn verify`
       # proves the code compiles and the tests pass; the build proves the
@@ -1336,3 +1385,308 @@ jobs:
 
       - name: Compare front-end SonarQube issue counts against the committed baseline
         run: tools/sonar/ratchet-ui.sh
+
+  # The end-to-end suite. Playwright drives real browsers against the two
+  # images the `image` job just built, composed by `compose.e2e.yml`: the
+  # production Dockerfile, the production `ui/Dockerfile` with `ui/Caddyfile`
+  # baked in, `SPRING_PROFILES_ACTIVE=prod`, TLS on host 8443. It is the only
+  # job in this file that exercises the artifact through the same surface a
+  # user gets, which is why it is worth minutes (ADR-068, ADR-072).
+  #
+  # NOT a required status check, and deliberately never one, because it does
+  # not run on `pull_request` at all. Three browser projects run serially
+  # against one application and one database - `workers: 1`, because both rate
+  # limiters key on the client address and the leaderboard reads the whole
+  # history (ADR-030) - so the suite costs minutes rather than seconds. Too
+  # slow to sit in front of a merge; and a required check that never runs on a
+  # pull request would leave every pull request permanently unmergeable, which
+  # is the same trap the `dependency-cve` job's comment warns about from the
+  # other direction. What EOP-220 buys instead is a post-merge failure that
+  # someone is told about, which beats a pre-merge gate nobody can afford to
+  # wait for.
+  #
+  # `needs: [ image ]` does two things. It sequences, because the images have
+  # to exist before they can be loaded; and it makes a broken build *skip*
+  # this suite rather than fail it, because a dependent job whose need fails
+  # is skipped, and the `if:` below is a plain event test containing no
+  # `always()` and no `failure()`, so that default survives. A red `image` and
+  # a red `e2e` reporting one root cause would be noise.
+  #
+  # Notification is GitHub's own, and there is deliberately no step here that
+  # produces one. GitHub notifies the actor who triggered a failed run -- for a
+  # push to `main`, whoever merged -- through whatever channel their own Actions
+  # notification settings name. That is what "at zero tooling cost" meant in
+  # the story: no third-party email action, no `actions/github-script`, no
+  # token beyond the default, nothing to keep working. The residual is stated
+  # in ADR-072 rather than hidden: when the person who merges is not the pull
+  # request's author, only the merger is notified directly and the author
+  # learns of it by watching the repository. The `::error::` annotations this
+  # job emits narrow that gap, because an annotation is attached to the commit
+  # and visible to anyone who opens it.
+  e2e:
+    name: e2e
+    needs: [ image ]
+    # Every event except a pull request. This one line is acceptance criterion
+    # 4: a suite that never runs before a merge cannot block one. Note there
+    # is no branch guard on `workflow_dispatch`. EOP-220's technical notes
+    # suggested restricting it to `main`, and that suggestion was not taken:
+    # dispatching this suite from a topic branch is exactly how a change to
+    # the suite or to `compose.e2e.yml` gets tested before it merges, and it
+    # is harmless because nothing is published from a non-push event - the
+    # GHCR steps in `image` are gated on `github.event_name == 'push'`, the
+    # images travel as a run-scoped artifact, and the stack is destroyed at
+    # the end. A guard here would instead silently skip the job for whoever
+    # dispatched it, which is the worse failure mode.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Three browser projects serially, plus a browser install and an image
+    # load. A healthy run sits well inside this; the ceiling is here so that a
+    # hung page cannot burn an hour of the runner.
+    timeout-minutes: 45
+    # Reads the repository and one workflow artifact; writes artifacts. No
+    # `packages` scope, because the images arrive as an artifact rather than
+    # from the registry, and no `contents: write` - this job records nothing
+    # in the repository. `perf-trend` remains the only job here that can.
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      # `e2e/` is a third npm project alongside `ui/`, with its own lockfile
+      # and its own Node floor of 22.12. `node-version: 22` resolves to the
+      # latest 22.x and so clears that patch floor, exactly as the `ui` job
+      # relies on.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install end-to-end dependencies
+        run: npm ci
+
+      # Typecheck before spending minutes on browsers. `e2e/` has no ESLint by
+      # design; a strict `tsconfig.json` plus this is the whole static gate
+      # there, so skipping it would leave the directory ungated.
+      - name: Typecheck the suite
+        run: npm run typecheck
+
+      # `--with-deps` also installs the system libraries the three browsers
+      # need, which no npm cache can hold, so this is not cached: the browser
+      # binaries alone would still leave the apt step to run, and the suite
+      # itself dominates the job's wall clock either way.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # Jobs do not share a Docker daemon, so the images the `image` job built
+      # travel as an artifact. This is what makes the suite a test of the
+      # artifact we would ship rather than of a second build of the same
+      # source: nothing here rebuilds from the working tree.
+      - name: Download the images built by the image job
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-images
+          path: image-export
+
+      - name: Load the images into the runner's daemon
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          gunzip -c image-export/app.tar.gz | docker load
+          gunzip -c image-export/ui.tar.gz | docker load
+          docker image inspect eop-threat-modeling:ci > /dev/null
+          docker image inspect eop-ui:ci > /dev/null
+
+      # CI starts the stack itself rather than letting `global-setup.ts` do it,
+      # which is what `E2E_REUSE_STACK` exists for: the suite's own teardown
+      # runs `down -v`, and a stack that has already been destroyed cannot be
+      # asked for its container logs. Owning the lifecycle here means the logs
+      # survive a failure long enough to be collected.
+      #
+      # Only the two image tags need overriding. Every other input in
+      # `compose.e2e.yml` carries a default, which is why this job needs no
+      # secrets - the repository still has none.
+      - name: Start the end-to-end stack
+        working-directory: ${{ github.workspace }}
+        env:
+          APP_IMAGE: eop-threat-modeling:ci
+          UI_IMAGE: eop-ui:ci
+        run: |
+          set -euo pipefail
+          docker compose -f compose.e2e.yml up -d --wait --remove-orphans
+          docker compose -p eop-e2e ps
+
+      # `E2E_REUSE_STACK` skips the `up` and the teardown inside the suite but
+      # keeps its health gate, which polls https://localhost:8443/health from
+      # the host until it answers 200 with a body of exactly `OK`. That check
+      # is not redundant with `--wait` above: `--wait` proves each container's
+      # own healthcheck passes, and says nothing about host port publication
+      # or the TLS handshake.
+      - name: Run the Playwright suite
+        env:
+          E2E_REUSE_STACK: 'true'
+        run: npx playwright test
+
+      # Acceptance criteria 1 and 5, second half: the outcome has to be
+      # legible in the run summary, and a failure has to name the scenario
+      # that failed. Runs on success too - a green summary is what makes the
+      # absence of one on a failure meaningful.
+      #
+      # It reports the spec title, its file and line, the browser project and
+      # the status. It deliberately does NOT copy assertion text into the
+      # summary: a failing matcher prints the value it received, and under
+      # ADR-071 that value can be a live join code or a player token. The job
+      # log already carries it and that exposure is accepted there; widening
+      # it into a rendered page is not this step's to decide.
+      - name: Report the end-to-end result in the run summary
+        if: always()
+        run: |
+          set -uo pipefail
+          SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+
+          # Silence is the failure mode to design against: k6 taught this file
+          # that a green exit code proves nothing about the artefact a later
+          # step reads. If the reporter wrote nothing, say so loudly.
+          if [ ! -s results.json ]; then
+            echo "::error title=End-to-end suite::The suite produced no results.json, so its outcome cannot be reported. Check the run step above and the stack logs artifact."
+            {
+              echo "## End-to-end suite"
+              echo
+              echo "No machine-readable result was produced. The suite did not reach its"
+              echo "reporter -- most often the stack failed to become healthy. See the"
+              echo '`e2e-stack-logs` artifact.'
+            } >> "$SUMMARY"
+            exit 1
+          fi
+
+          PASSED=$(jq -r '.stats.expected // 0' results.json)
+          FAILED=$(jq -r '.stats.unexpected // 0' results.json)
+          FLAKY=$(jq -r '.stats.flaky // 0' results.json)
+          SKIPPED=$(jq -r '.stats.skipped // 0' results.json)
+          SECONDS_TAKEN=$(jq -r '((.stats.duration // 0) / 1000) | floor' results.json)
+
+          if [ "$FAILED" -gt 0 ]; then
+            HEADLINE="FAILED"
+          elif [ "$FLAKY" -gt 0 ]; then
+            HEADLINE="PASSED (with retries)"
+          else
+            HEADLINE="PASSED"
+          fi
+
+          {
+            echo "## End-to-end suite: $HEADLINE"
+            echo
+            echo "| Passed | Failed | Flaky | Skipped | Duration |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| $PASSED | $FAILED | $FLAKY | $SKIPPED | ${SECONDS_TAKEN}s |"
+            echo
+          } >> "$SUMMARY"
+
+          # Specs are nested one level per `describe`, so recurse rather than
+          # indexing a fixed depth. A spec object is the one that carries both
+          # `ok` and `tests`.
+          NOT_EXPECTED=$(jq -r '
+            [ .. | objects | select(has("specs")) | .specs[]? ]
+            | map(select(.ok == false or ((.tests // []) | any(.status == "flaky"))))
+            | .[]
+            | . as $spec
+            | ($spec.tests // [])[]
+            | select(.status != "expected" and .status != "skipped")
+            | "| `\($spec.file // "?"):\($spec.line // 0)` | \($spec.title) | \(.projectName // "default") | \(.status) |"
+          ' results.json)
+
+          if [ -n "$NOT_EXPECTED" ]; then
+            {
+              echo "### Scenarios that did not pass first time"
+              echo
+              echo "| Location | Scenario | Browser | Status |"
+              echo "| --- | --- | --- | --- |"
+              echo "$NOT_EXPECTED"
+              echo
+              echo "Assertion text is deliberately not reproduced here: a failing matcher"
+              echo "prints the value it received, which can be a live join code or a player"
+              echo "token (ADR-071). Read it in the run step above, or open the report"
+              echo "artifact."
+            } >> "$SUMMARY"
+          fi
+
+          # An annotation is attached to the commit, so it reaches anyone who
+          # opens it rather than only the actor GitHub notifies.
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error title=End-to-end suite::$FAILED end-to-end assertion(s) failed against the images built by this run. See the run summary for the scenarios."
+          elif [ "$FLAKY" -gt 0 ]; then
+            echo "::warning title=End-to-end suite::$FLAKY scenario(s) passed only on retry. A retried pass is reported as flaky, not passed."
+          fi
+
+      # Collected while the stack is still up, and before the teardown below
+      # destroys it. Every Caddy access line for a join carries a live join
+      # code, because the code is a path segment; publishing these inherits
+      # ADR-071's acceptance of the artifact channel, and they must not reach
+      # any page this repository serves.
+      - name: Collect stack logs
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          mkdir -p e2e-stack-logs
+          docker compose -p eop-e2e ps --all > e2e-stack-logs/ps.txt 2>&1 || true
+          docker compose -p eop-e2e logs --no-color --timestamps \
+            > e2e-stack-logs/all.log 2>&1 || true
+          wc -l e2e-stack-logs/*.log || true
+
+      - name: Upload stack logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stack-logs
+          path: e2e-stack-logs/
+          if-no-files-found: warn
+          retention-days: 7
+
+      # The HTML report and the traces, as a run-scoped artifact and nothing
+      # else. ADR-071 is unambiguous that these may not be served from any
+      # page this repository publishes: the HTML reporter embeds its whole
+      # step tree, and a green run has been measured carrying twelve distinct
+      # live join codes in `locator.fill()` step titles. Traces and failure
+      # screenshots carry player tokens verbatim.
+      #
+      # `E2eArtefactPublicationBoundaryTest` fails `./mvnw verify` if this
+      # step ever grows a publisher alongside it, so the boundary is enforced
+      # by the build rather than by this comment.
+      - name: Upload the Playwright report and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # `results.json` separately, because it is the one artefact ADR-071
+      # clears for publication: a length-only assertion in `e2e/game.ts` keeps
+      # secrets out of it, and that rule is build-enforced. EOP-221 publishes
+      # this file and only this file, which is why it does not travel inside
+      # the artifact above.
+      - name: Upload the machine-readable result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: e2e/results.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      # By project name with no `-f`, matching the teardown in `image`, and
+      # with `--volumes` so the database is destroyed. A later run on the same
+      # runner would get a fresh schema anyway, but the leaderboard scenarios
+      # depend on an empty history and leaving the volume behind is how that
+      # assumption quietly stops holding.
+      - name: Tear down the end-to-end stack
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: docker compose -p eop-e2e down --volumes
