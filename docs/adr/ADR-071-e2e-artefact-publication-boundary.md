@@ -167,6 +167,11 @@ would draw a stronger conclusion than the evidence supports.
   `docs/api/openapi.yml` declares `/api/v1/sessions/{joinCode}/players`, and `ui/src/api.ts`
   fetches exactly that — so every Caddy access line for a join request carries a live join code.
   Any decision to publish those logs inherits this ADR's acceptance and should say so.
+  That decision was taken on 2026-09-07 by [ADR-072](ADR-072-e2e-ci-integration.md), which
+  publishes them as the `e2e-stack-logs` artifact and says so explicitly in its Consequences
+  rather than leaning on this sentence. Note what this bullet does **not** say, because it has
+  been misread once: it does not forbid publication and it does not require scrubbing. It
+  delegates the decision, with a duty to record it.
 - **`blob-report/` and `.last-run.json`.** Gitignored and not produced by the current
   configuration, but both are Playwright outputs and `blob-report/` is a merge-ready form of the
   same step tree. Neither may be published as the page.
