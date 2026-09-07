@@ -1,57 +1,87 @@
 # CI/CD Pipeline
 
-The Walking Skeleton CI pipeline runs on every push/PR to `main`.
+One workflow, `.github/workflows/ci.yml`, holds every automated check this project runs. It is heavily commented at source; this page is the map, not a copy. **Read the workflow for the detail** — a second copy of the YAML in a Markdown file is a copy that goes stale, and this page carried exactly that mistake from the Walking Skeleton until 2026-09-07.
 
-## Workflow: `.github/workflows/ci.yml`
+## Triggers
 
-```yaml
-name: CI
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - run: mvn verify --batch-mode
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-jar
-          path: target/*.jar
-```
-
-## What it does
-
-1. **Checkout** the repository
-2. **Install JDK 21** (Eclipse Temurin) — matching the project's `java.version`
-3. **Run `mvn verify`** — compiles source, runs unit tests, runs integration tests
-4. **Upload JAR** as a build artifact for downstream use
-
-## Extending the Pipeline
-
-As the project grows beyond Walking Skeleton, add stages:
-
-| Stage | When | What |
+| Trigger | When | Notes |
 |---|---|---|
-| Static analysis | Next story | SpotBugs / PMD / Checkstyle |
-| Security scan | Before release | OWASP dependency check |
-| Deployment | Before release | `aws-actions/configure-aws-credentials` + CDK/Terraform |
-| Mutation testing | Before release | PIT mutation coverage |
+| `push` | Every commit on `main` | The only event that publishes anything |
+| `pull_request` | Every PR targeting `main` | Publishes nothing; `e2e` and `perf-trend` do not run |
+| `schedule` | Nightly, `0 6 * * *` (06:00 UTC) | Was weekly until EOP-220 needed a nightly E2E cadence ([ADR-072](../adr/ADR-072-e2e-ci-integration.md)) |
+| `workflow_dispatch` | On demand, any branch | No inputs, no branch restriction |
 
-## Verification
+The whole graph runs on the schedule, not just the jobs that need it. That is deliberate: a nightly green on `build`, `ui` and `image` is a canary for breakage arriving from outside the repository — a yanked dependency, a base-image change, a new advisory — and nothing is published, because every publishing step is gated on `github.event_name == 'push'`.
 
-After merge, confirm:
-1. GitHub Actions shows green ✅
-2. Artifact JAR is downloadable from the workflow run
-3. (Future) `curl https://<deploy-url>/health` returns `OK`
+Top-level `permissions` is `contents: read`. Two jobs widen it, and only as far as they must: `image` adds `packages: write` for GHCR, and `perf-trend` takes `contents: write` because it commits to an orphan branch. `permissions` is job-scoped with no per-step granularity, which is why `perf-trend` is a separate job rather than a step inside `image`.
+
+The repository holds **zero secrets**. Everything above runs on the built-in `GITHUB_TOKEN`.
+
+## Jobs
+
+| Job | Depends on | Runs when | What it does |
+|---|---|---|---|
+| `build` | — | Always | `./mvnw verify --batch-mode`, then `tools/artifact/assert-no-h2-in-jar.sh`; uploads `app-jar` |
+| `ui` | — | Always | In `ui/`: `npm ci`, then `typecheck`, `lint`, `coverage`, `build` as four separate steps so a failure names itself |
+| `image` | `build`, `ui` | Always | Builds `eop-threat-modeling:ci` and `eop-ui:ci`, smoke-tests the composed stack, runs the k6 canary, and on a push publishes both images to GHCR |
+| `e2e` | `image` | Not on `pull_request` | Loads the images `image` built, starts `compose.e2e.yml`, runs the Playwright suite, reports failing scenarios in the run summary |
+| `perf-trend` | `image` | Push to `main` only | Appends one k6 trend point to the orphan `perf-history` branch and republishes the trend page |
+| `sonar-ratchet` | — | Always | `tools/sonar/ratchet.sh` — three Java issue counts against `tools/sonar/sonar-baseline.json` |
+| `sonar-ratchet-ui` | — | Always | `tools/sonar/ratchet-ui.sh` — the same three counts over `ui/src` against `sonar-ui-baseline.json` |
+| `dependency-cve` | — | Always, unconditionally | Trivy over both dependency trees, gating on HIGH and CRITICAL |
+| `supply-chain` | — | Always | `audit-containers.sh` then `audit-plugins.sh`, each `if: always()` so neither finding hides the other |
+
+### Required status checks on `main`
+
+Four, and only four: **`build`**, **`sonar-ratchet`**, **`sonar-ratchet-ui`** and **`dependency-cve`**.
+
+`image` is deliberately not required yet — it landed as an ordinary job so its reliability could be observed, and promoting it is a separate branch-protection change. `dependency-cve` carries no `if:` condition at all, which is a precondition of being required rather than an incidental detail: a required check that can be skipped leaves a pull request permanently unmergeable.
+
+`e2e` is not required and cannot become required without first changing its trigger — see below.
+
+## The `image` job in more detail
+
+1. **Build both images** with `docker/build-push-action@v6`, `load: true`, GHA layer cache scoped `app` and `ui`. The front-end build passes all three `VITE_*` flags as `true` build args, because `ui/Dockerfile` defaults them to `false` and they are resolved at build time (ADR-037).
+2. **Save both images** as a `ci-images` artifact (`docker save | gzip`, three-day retention), for `e2e` to load. Not on a pull request.
+3. **Smoke test** — `docker compose -f compose.app.yml up -d`, then poll `curl -fsSk https://localhost/health` for a body of exactly `OK`, check `GET /` is 200, and check the card catalogue reports `"totalElements":68`.
+4. **k6 canary** — two scenarios against the relaxed CI thresholds in `test/k6/config/options-ci.js`, from a digest-pinned `grafana/k6` container joined to the Caddy container's network namespace. Metrics render into the run summary and upload as `k6-results`. This is a smoke canary, not a load test; its numbers are not comparable with the local baselines in `docs/performance/TRENDS.md` ([ADR-055](../adr/ADR-055-k6-performance-check-in-ci.md)).
+5. **Tear down** by project name (`docker compose -p eop-app down --volumes`, no `-f`) — `compose.app.yml` uses the fail-hard `${VAR:?}` form, so passing `-f` would make Compose refuse to parse even for a `down`, and doing it this way keeps the database credentials out of the step.
+6. **Publish to GHCR** — `if: github.event_name == 'push'` only, both images tagged `:${sha}` and `:latest`.
+
+## The `e2e` job in more detail
+
+It drives the shipped containers through a real browser — three of them, serially — against `compose.e2e.yml`, a standalone stack on host port 8443 with its own project name, subnet and volumes so it cannot disturb a developer's running `compose.app.yml`. See [ADR-068](../adr/ADR-068-playwright-e2e-testing.md) for the tier and [ADR-072](../adr/ADR-072-e2e-ci-integration.md) for this wiring.
+
+**It never runs on a pull request.** That is how the merge stays unblocked — not by leaving a check off a protection list, where a future administrator could add it, but by there being no check on the pull request to add.
+
+**A failed `image` job skips it rather than failing it.** `needs: [ image ]` supplies that, and the job's `if:` tests only the event name — no `always()`, no `failure()` — so GitHub's default skip survives. Honest reporting: the suite did not fail, it never got an artefact to run against.
+
+**CI owns the stack.** The job runs `up -d --wait` itself and sets `E2E_REUSE_STACK=true`, so `e2e/global-setup.ts` skips its own `up` while still performing the host-side health wait, and `e2e/global-teardown.ts` skips `down -v`. Container logs therefore survive the tests and are collected as the `e2e-stack-logs` artifact; teardown happens in a final `if: always()` step.
+
+**Failures reach a human through GitHub's own notification** for a failed workflow run — no email action, no `actions/github-script`, no secret. Alongside it the job writes a `$GITHUB_STEP_SUMMARY` table naming every scenario that did not pass first time (`file:line`, title, browser project, status) and emits `::error::` / `::warning::` annotations so the finding attaches to the commit. It reports identity, never assertion text: a failing matcher prints its received value, and that value can be a live join code ([ADR-071](../adr/ADR-071-e2e-artefact-publication-boundary.md)).
+
+**Artefacts.** `e2e-results` (`results.json` — the only file ADR-071 clears for publication, and EOP-221's input), `e2e-playwright-report` (the HTML report and traces — Actions artifact only, never a published page), `e2e-stack-logs`. `E2eArtefactPublicationBoundaryTest` fails `./mvnw verify` if a workflow step ever names `playwright-report` alongside a Pages publisher.
+
+**Two things a green `e2e` does not prove.** Rate limiting works — `compose.e2e.yml` raises both ceilings to `Integer.MAX_VALUE`. And that the run was clean — `retries: 1` under CI turns a first-attempt failure that passes on retry into a *flaky* result, which does not fail the job. The summary reports flaky counts and warns.
+
+## What gates what, from a contributor's point of view
+
+- **Before pushing:** `./mvnw verify` at the repository root, and `npm run verify` in `ui/` if you touched the front end. Both are what CI runs.
+- **If you changed `pom.xml` or any `.java` under `src/`:** re-run `tools/sonar/scan.sh` with the local Sonar container up and commit both JSONs, or `sonar-ratchet` fails on a stale `sourceHash` before it compares a single count. `tools/sonar/scan-ui.sh` is the equivalent for `ui/src`.
+- **If you changed a pinned plugin or container:** run `tools/supply-chain/audit-plugins.sh` / `audit-containers.sh` and update the baseline in the same commit — never to turn a red job green.
+- **If you changed the E2E suite or `compose.e2e.yml`:** push the branch and use `workflow_dispatch`. It is not restricted to `main` for exactly this reason.
+
+## Deployment
+
+There is no deployment stage. Nothing in this workflow assumes a cloud role, runs infrastructure-as-code, or touches an environment outside the runner; the only artefacts that leave a run are the GHCR images and the two orphan branches. `SETUP.md` and the Blueprint describe the intended continuous-deployment target; this file describes what exists.
 
 ## Related
-- [ADR-002: Spring Boot Walking Skeleton](../adr/ADR-002-spring-boot-bootstrap.md)
-- [Local Development Guide](local-development.md)
+
+- [ADR-072: The end-to-end suite runs after the merge, not before it](../adr/ADR-072-e2e-ci-integration.md)
+- [ADR-068: End-to-end testing with Playwright](../adr/ADR-068-playwright-e2e-testing.md)
+- [ADR-071: The E2E artefact publication boundary](../adr/ADR-071-e2e-artefact-publication-boundary.md)
+- [ADR-055: k6 performance check in CI](../adr/ADR-055-k6-performance-check-in-ci.md)
+- [ADR-050: CVE scanning as a separate Trivy job](../adr/ADR-050-dependency-cve-scanning.md)
+- [ADR-060: SonarQube issue ratchet](../adr/ADR-060-sonarqube-issue-ratchet.md)
+- [Local Development](local-development.md)
+- `e2e/README.md` — running the suite on your own machine

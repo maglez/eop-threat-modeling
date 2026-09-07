@@ -12,7 +12,7 @@ A threat modeling card game based on the STRIDE framework (Spoofing, Tampering, 
 | Tests | JUnit 5 |
 | Front End | React + TypeScript + Vite, GOV.UK Design System (`ui/`) ([ADR-009](docs/adr/ADR-009-frontend-react-typescript.md)) |
 | Serving | Caddy reverse proxy — one origin for the site and the API ([ADR-017](docs/adr/ADR-017-frontend-delivery-topology.md)) |
-| CI | GitHub Actions — `./mvnw verify`, front-end gates, then build, smoke test and publish both images to GHCR |
+| CI | GitHub Actions — `./mvnw verify`, front-end gates, then build, smoke test and publish both images to GHCR; a Playwright end-to-end job then drives those images after the merge, never on the PR ([ADR-072](docs/adr/ADR-072-e2e-ci-integration.md)) |
 | Container | Multi-stage `Dockerfile` and `ui/Dockerfile`, `compose.app.yml` with PostgreSQL |
 | Infrastructure | Terraform (`infra/`) — single EC2 instance, not yet applied ([ADR-012](docs/adr/ADR-012-deployment-target.md)) |
 | AI Agents | OpenCode multi-agent system |

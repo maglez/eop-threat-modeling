@@ -7,9 +7,9 @@ JUnit unit tests, the Spring integration/API tests and the k6 load tests.
 See [ADR-068](../docs/adr/ADR-068-playwright-e2e-testing.md) for the decisions
 behind this directory. **Which artefacts may be published, and to whom, is
 [ADR-071](../docs/adr/ADR-071-e2e-artefact-publication-boundary.md) — read it before
-wiring the report into CI.** How the suite *runs* in CI is still unwritten and is due
-with `EOP-220`; it has no ADR number reserved, because 069 and 070 were taken by
-unrelated decisions while this directory was being built.
+wiring the report into CI.** How the suite *runs* in CI is
+[ADR-072](../docs/adr/ADR-072-e2e-ci-integration.md): after the merge, never on the
+pull request — see [In CI](#in-ci) below.
 
 ## What it tests
 
@@ -97,7 +97,51 @@ The body check is not belt-and-braces. A Caddy instance that matched the wrong r
 or no site block at all, answers `200` with an empty body — so a status-only check
 would wave through precisely the misconfiguration most likely to occur.
 
-## What may be published, and where — read this before wiring CI
+## In CI
+
+The `e2e` job in `.github/workflows/ci.yml` runs this suite **after** a merge, never on
+the pull request that produced it. Three browsers serially against one app instance is
+too slow to gate a merge, and a required check that is conditional is worse than none —
+so the job simply does not run on a `pull_request` event, which means it cannot be added
+to branch protection without a visible edit to its trigger. It runs on every push to
+`main`, nightly at 06:00 UTC, and on `workflow_dispatch` from any branch. Full rationale
+in [ADR-072](../docs/adr/ADR-072-e2e-ci-integration.md).
+
+Three things about it are worth knowing before you change anything in this directory.
+
+**CI does not build the images and does not own the compose lifecycle the way you do
+locally.** The `image` job builds `eop-threat-modeling:ci` and `eop-ui:ci` (with all
+three `VITE_*` flags `true`), `docker save | gzip`s them into a `ci-images` artifact, and
+the `e2e` job loads that artifact so it tests the artefact the pipeline built rather than
+a second build of its own. It then starts the stack itself with `APP_IMAGE`/`UI_IMAGE`
+pointed at those tags and sets **`E2E_REUSE_STACK=true`**, so `global-setup.ts` skips its
+`up` while still performing the health wait above, and `global-teardown.ts` skips
+`down -v`. That inversion is the only way container logs survive to be collected; the job
+tears the stack down in a final `if: always()` step instead.
+
+**The run summary reports scenario identity, never assertion text.** It reads
+`results.json` — the one artefact ADR-071 clears as secret-free — and renders
+`file:line`, title, browser project and status for every test that did not pass first
+time, plus `::error::` / `::warning::` annotations so the finding attaches to the commit.
+It deliberately does not copy failure messages, because a failing matcher prints its
+received value. This is the third reason for the length-only assertion rule below, after
+the report and the job log.
+
+**A flaky pass does not fail the job.** `retries: 1` applies under `CI`, so a scenario
+that fails once and passes on retry is reported as *flaky*: the summary counts it and
+raises a warning, but the job is green. If you are diagnosing intermittency, read the
+summary rather than the job's conclusion.
+
+Failures notify through GitHub's own failed-run mechanism — no email action, no
+`actions/github-script`, no secret. Note that the notification reaches whoever *merged*,
+which under this project's human-merge rule is the reviewing engineer rather than the
+agent that opened the pull request; the commit annotations are what narrow that gap.
+
+If you change the suite, `playwright.config.ts` or `compose.e2e.yml`, exercise it before
+merging by pushing the branch and dispatching the workflow. `workflow_dispatch` is not
+restricted to `main` for exactly this reason.
+
+## What may be published, and where
 
 **The HTML report must never be served from GitHub Pages or any other page this repository
 publishes.** Note what that sentence does *not* say. This repository is **public**, so a
