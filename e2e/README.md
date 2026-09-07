@@ -226,8 +226,33 @@ Three channels this does **not** cover, which matter when you wire CI:
 - **`blob-report/`.** Not produced by this configuration, but it is a merge-ready form of
   the same step tree, so it is subject to the same rule as `playwright-report/`.
 
-When `EOP-221` lands and a report URL exists, it belongs in this section, next to the
-table that says what is behind it.
+### The published report
+
+**https://maglez.github.io/eop-threat-modeling/e2e/**
+
+A push to `main` whose `e2e` job goes green appends one row to a run history and
+republishes that page. It shows, newest first, the date, the commit SHA, a link to the
+workflow run, and the expected / unexpected / flaky / skipped counts and duration for
+each of the last 30 published runs.
+
+**It is generated from `results.json` alone, and the Playwright HTML report is not
+published there.** That is ADR-071's boundary, not an implementation detail — the row
+carries counts and identity, never a test title and never assertion text. The
+developer-facing HTML report stays where the table above puts it: a 14-day Actions
+artefact on the run, reachable by anyone who can see the repository.
+
+Nothing is published on a failing run, on a pull request, or on the nightly schedule,
+so the page always shows the last *passing* state of `main` rather than the last attempt.
+
+The page lives at `tools/e2e/report-page.html` in this repository and is copied over
+`e2e/index.html` on the published branch on every publish — so **edit it here, never
+there**, or the next push overwrites your change. It is served from an `e2e/`
+subdirectory of the `perf-history` branch rather than from a branch of its own, because
+a repository has exactly one GitHub Pages site and it was already serving the k6
+performance trend page at the site root.
+[ADR-074](../docs/adr/ADR-074-e2e-run-history-report-publication-destination.md) records
+that constraint, the alternatives rejected, and why two series sharing one branch is not
+the same thing as two series sharing one axis.
 
 
 ## Escape hatches

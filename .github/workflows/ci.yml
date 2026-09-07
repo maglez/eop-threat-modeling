@@ -675,6 +675,228 @@ jobs:
   #
   # `needs: image` means a red canary never records a data point, so a
   # breached threshold cannot enter the series and depress the baseline.
+  e2e-report:
+    name: e2e-report
+    needs: e2e
+    # Pushes to `main` only. `github.event_name == 'push'` is load-bearing
+    # and not redundant with the ref test: `workflow_dispatch` and the weekly
+    # `schedule` trigger both report `refs/heads/main` too, and a scheduled
+    # re-run of unchanged code would otherwise append a duplicate point for
+    # a commit already in the series. A pull request must never append -
+    # the code is unmerged, so a point recorded against it describes a state
+    # of the tree that may never exist on `main`.
+    #
+    # `success()` is belt-and-braces rather than load-bearing, and is written
+    # out for the reader: because this `if:` names no status function, the
+    # implicit `needs` success requirement already applies, so a failing
+    # `e2e` job skips this one. Stating it makes EOP-221 Scenario 3 - never
+    # publish a failing run - legible at the point it is enforced, rather
+    # than resting on knowledge of a GitHub default. Do not "simplify" it
+    # away; and never write `always()` or `failure()` here, which would
+    # disable that requirement and publish failures.
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One of two jobs in this workflow that can write to the repository - the
+    # other is `perf-trend` - and both write only to `perf-history`, a branch
+    # that holds no code.
+    permissions:
+      contents: write
+    # Serialise this series against itself, and never cancel: two merges in
+    # quick succession would race on the push, and the queued run carries a
+    # data point that is not recoverable if dropped, because the artifact it
+    # reads is scoped to its own workflow run.
+    #
+    # Deliberately a *different* group from `perf-trend`, which means the two
+    # jobs can and will run concurrently on the same commit and race on the
+    # push to `perf-history`. That race is reconciled by the retry loop below
+    # rather than by serialising the two, because they write disjoint paths -
+    # `perf-trend` owns the branch root, this job owns `e2e/` - so a loser
+    # simply replays its append onto the winner's tip with nothing to merge.
+    concurrency:
+      group: e2e-report
+      cancel-in-progress: false
+    steps:
+      # Needed only for tools/e2e/report-page.html. The report series itself
+      # lives on the orphan branch and is fetched separately below.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download E2E results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: e2e-results
+          path: e2e-results
+
+      # Reads the artifact, never the workspace.
+      - name: Extract report row
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          RESULTS="e2e-results/results.json"
+
+          if [[ ! -s "$RESULTS" ]]; then
+            echo "::error::$RESULTS missing or empty in the e2e-results artifact -- the E2E suite passed but exported nothing, so the report series cannot be appended to"
+            ls -R e2e-results || true
+            exit 1
+          fi
+
+          # `results.json` is a single object, not an array of runs. Checked
+          # explicitly so a truncated or HTML-error-page download fails here
+          # with a clear message rather than yielding `null` metrics that the
+          # row validation below would then reject more obscurely.
+          if ! jq -e 'type == "object"' "$RESULTS" >/dev/null; then
+            echo "::error::$RESULTS is not a valid JSON object"
+            exit 1
+          fi
+
+          # Field names mirror Playwright's own `.stats` vocabulary
+          # (`expected`/`unexpected`, not `passed`/`failed`) so a reader can
+          # map a row back to the export without a translation table, and so
+          # this row agrees with the `e2e` job's run-summary step, which reads
+          # the same keys. `duration` is converted to whole seconds because
+          # that is what the page renders; the raw export is milliseconds.
+          row="$(jq -c \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg sha "$COMMIT_SHA" \
+            --arg run_id "$RUN_ID" '
+              {
+                date: $date,
+                sha: $sha,
+                run_id: $run_id,
+                expected: (.stats.expected // 0),
+                unexpected: (.stats.unexpected // 0),
+                flaky: (.stats.flaky // 0),
+                skipped: (.stats.skipped // 0),
+                duration: (((.stats.duration // 0) / 1000) | floor)
+              }
+            ' "$RESULTS")"
+
+          # Fail loudly on a partial row rather than committing nulls.
+          #
+          # The numeric checks are wrapped in an array and tested with
+          # `all(...)` deliberately. The obvious spelling - a bare comma form
+          # such as `(.expected, .unexpected | type == "number")` - produces a
+          # *stream* of booleans, and `jq -e` takes its exit status from the
+          # last value only, so a null in any non-final position exits 0 and
+          # the bad row is committed. `perf-trend` carries the same note and
+          # the same shape; the behaviour was confirmed by negative test.
+          if ! printf '%s' "$row" | jq -e '
+                ([.expected, .unexpected, .flaky, .skipped, .duration]
+                  | all(type == "number" and (isnan or isinfinite | not)))
+                and (.sha | test("^[0-9a-f]{40}$"))
+                and (.run_id | test("^[0-9]+$"))
+                and (.date | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+              ' >/dev/null; then
+            echo "::error::extracted row failed validation -- a metric key has probably moved in the results.json export"
+            printf '%s\n' "$row"
+            exit 1
+          fi
+
+          printf '%s\n' "$row" > "$RUNNER_TEMP/row.json"
+          echo "Row to append:"
+          cat "$RUNNER_TEMP/row.json"
+
+      - name: Append to report series and publish page
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          WORK="$RUNNER_TEMP/e2e-history"
+          # Token in the remote URL is the documented pattern for the
+          # built-in GITHUB_TOKEN. Never echo this, and never `set -x` in
+          # this step; Actions masks the value but the URL form makes it
+          # trivially easy to leak into an unmasked context.
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+
+          pushed=0
+          for attempt in 1 2 3 4 5; do
+            rm -rf "$WORK"
+
+            # Bootstrap without a chicken-and-egg: `actions/checkout` with
+            # `ref: perf-history` hard-fails when the branch does not exist,
+            # which is the state of every repository before this job has
+            # ever run. Probe first, then either clone it or start an empty
+            # history locally and let the push create it.
+            if git ls-remote --exit-code --heads "$REMOTE" perf-history >/dev/null 2>&1; then
+              git clone --quiet --branch perf-history --single-branch --depth 1 "$REMOTE" "$WORK"
+            else
+              echo "perf-history does not exist yet -- creating it"
+              mkdir -p "$WORK"
+              git -C "$WORK" init --quiet --initial-branch perf-history
+              git -C "$WORK" remote add origin "$REMOTE"
+            fi
+
+            git -C "$WORK" config user.name "github-actions[bot]"
+            git -C "$WORK" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            # Everything this job owns lives under `e2e/`. The branch root is
+            # the perf tenant's directory - `perf-trend` owns `ci-history.jsonl`
+            # and `index.html` there - and writing the E2E series to the root
+            # would put two unrelated measurement populations in one directory,
+            # which is what ADR-074 exists to prevent.
+            SERIES="$WORK/e2e/e2e-history.jsonl"
+            mkdir -p "$WORK/e2e"
+            cat "$RUNNER_TEMP/row.json" >> "$SERIES"
+
+            # Prune to the newest 30 rows in this same commit, so the branch
+            # does not grow without bound and the page never has to defend
+            # against an unbounded fetch. Via a temporary file, not in place:
+            # `tail -n 30 "$SERIES" > "$SERIES"` would truncate the file
+            # before `tail` had read a byte of it.
+            tail -n 30 "$SERIES" > "$SERIES.pruned"
+            mv "$SERIES.pruned" "$SERIES"
+
+            # Copied unconditionally so the page tracks `main`. This is why
+            # the page must be edited at tools/e2e/report-page.html and never
+            # on the orphan branch.
+            cp tools/e2e/report-page.html "$WORK/e2e/index.html"
+
+            # Pages serves through Jekyll unless told not to, which would drop
+            # any future underscore-prefixed file without explanation. Created
+            # only when absent, because it sits at the branch root, which this
+            # job does not own: on this repository `perf-trend` has already
+            # committed it, so the guard matters only on the bootstrap path
+            # where the branch does not exist yet. One `.nojekyll` at the root
+            # covers the whole branch, so `e2e/` needs no second copy.
+            [[ -f "$WORK/.nojekyll" ]] || touch "$WORK/.nojekyll"
+
+            git -C "$WORK" add -- e2e/e2e-history.jsonl e2e/index.html .nojekyll
+            git -C "$WORK" commit --quiet \
+              -m "[EOP-221] chore: record E2E report point for ${COMMIT_SHA}"
+
+            if git -C "$WORK" push --quiet origin "HEAD:refs/heads/perf-history"; then
+              pushed=1
+              break
+            fi
+
+            # Reached when a concurrent run pushed first. The whole clone
+            # and append is inside the loop, so the retry replays onto the
+            # new tip instead of trying to rebase a detached commit.
+            echo "push attempt $attempt failed -- refetching and replaying"
+            sleep "$((attempt * 3))"
+          done
+
+          if [[ "$pushed" -ne 1 ]]; then
+            echo "::error::could not push to perf-history after 5 attempts"
+            exit 1
+          fi
+
+          points="$(wc -l < "$WORK/e2e/e2e-history.jsonl" | tr -d ' ')"
+          echo "perf-history now holds $points E2E data point(s) under e2e/ (capped at 30)"
+
+          {
+            echo "### E2E report updated"
+            echo ""
+            echo "Recorded one data point for \`${COMMIT_SHA}\`. The series now holds $points point(s)."
+            echo ""
+            echo "Report page: https://$(echo "$REPO" | cut -d/ -f1).github.io/$(echo "$REPO" | cut -d/ -f2)/e2e/"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   perf-trend:
     name: perf-trend
     needs: image
@@ -687,8 +909,9 @@ jobs:
     # of the tree that may never exist on `main`.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # The only job in this workflow that can write to the repository, and it
-    # writes to exactly one branch that holds no code.
+    # One of two jobs in this workflow that can write to the repository - the
+    # other is `e2e-report` - and both write to exactly one branch that holds
+    # no code. This job owns the branch root; `e2e-report` owns `e2e/`.
     permissions:
       contents: write
     # Serialise, and never cancel. Two merges in quick succession would race
@@ -1461,7 +1684,9 @@ jobs:
     # Reads the repository and one workflow artifact; writes artifacts. No
     # `packages` scope, because the images arrive as an artifact rather than
     # from the registry, and no `contents: write` - this job records nothing
-    # in the repository. `perf-trend` remains the only job here that can.
+    # in the repository. `perf-trend` and `e2e-report` are the only two jobs
+    # here that can, and `e2e-report` is the one that publishes this job's
+    # `results.json` after it succeeds.
     permissions:
       contents: read
     defaults:

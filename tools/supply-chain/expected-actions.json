@@ -67,7 +67,7 @@
       "sha": "11d5960a326750d5838078e36cf38b85af677262",
       "tag": "v4.4.0",
       "major": "v4",
-      "reference_count": 9,
+      "reference_count": 10,
       "occurrences": [
         ".github/workflows/ci.yml"
       ],
@@ -117,11 +117,11 @@
       "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
       "tag": "v4.3.0",
       "major": "v4",
-      "reference_count": 2,
+      "reference_count": 3,
       "occurrences": [
         ".github/workflows/ci.yml"
       ],
-      "note": "Retrieves the k6 summary for the `perf-trend` job and the `ci-images` archive for the `e2e` job. Must stay on a major compatible with actions/upload-artifact above."
+      "note": "Retrieves the k6 summary for the `perf-trend` job, the `ci-images` archive for the `e2e` job, and the `e2e-results` archive for the `e2e-report` job. Must stay on a major compatible with actions/upload-artifact above."
     },
     "docker/setup-buildx-action": {
       "sha": "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f",
