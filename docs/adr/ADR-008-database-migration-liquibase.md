@@ -201,8 +201,8 @@ figures rather than one, and conflating them is how a false sense of safety gets
 
 - **Executability** — every rollback runs without error and the changelog re-applies — is
   covered for all 27 changesets across all eleven changelogs on PostgreSQL 17, by
-  `PostgresRollbackRoundTripIT.java:156` (anchor: `entire changelog`) unwinding
-  `PostgresRollbackRoundTripIT.java:85` (anchor: `EXPECTED_CHANGESET_ROWS`) changesets in one
+  `PostgresRollbackRoundTripIT.java:179` (anchor: `entire changelog`) unwinding
+  `PostgresRollbackRoundTripIT.java:105` (anchor: `EXPECTED_CHANGESET_ROWS`) changesets in one
   pass.
 - **State restoration** — the rollback puts the database back — is covered for six of the eleven
   changelogs: `004-trick-play-schema.xml`, `006-session-expiry.xml`,
