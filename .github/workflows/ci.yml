@@ -54,10 +54,10 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: 21
@@ -68,7 +68,7 @@ jobs:
       # falls back to any prior Maven cache for the same OS, which still saves
       # most of the download time even after a pom.xml change.
       - name: Cache Maven dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -95,7 +95,7 @@ jobs:
         run: tools/artifact/assert-no-h2-in-jar.sh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: app-jar
           path: target/*.jar
@@ -114,10 +114,10 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -174,17 +174,17 @@ jobs:
       # enough, which is why this repository still has zero secrets.
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # linux/amd64 explicitly. The instance is t3.small, which is x86_64,
       # and a developer laptop on Apple Silicon would otherwise produce an
       # arm64 image that cannot run there. Only CI publishes the image that
       # gets deployed.
       - name: Build application image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           platforms: linux/amd64
@@ -198,7 +198,7 @@ jobs:
       # (ADR-017). Its own build context is `ui/`, which keeps the
       # front-end build out of the application image entirely.
       - name: Build front-end image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ui
           platforms: linux/amd64
@@ -246,7 +246,7 @@ jobs:
 
       - name: Upload images for the end-to-end job
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ci-images
           path: image-export/
@@ -594,7 +594,7 @@ jobs:
 
       - name: Upload k6 results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: k6-results
           path: test/k6/results/
@@ -620,7 +620,7 @@ jobs:
       # become a deployable tag.
       - name: Log in to GHCR
         if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -701,10 +701,10 @@ jobs:
     steps:
       # Needed only for tools/perf/trend-page.html. The trend series itself
       # lives on the orphan branch and is fetched separately below.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Download k6 results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: k6-results
           path: k6-results
@@ -900,7 +900,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The container audit runs first, before the Node setup, because it needs
       # neither Node nor npm -- only `git`, `python3` and `docker buildx`, all
@@ -909,6 +909,21 @@ jobs:
       # toolchain install it does not use (ADR-064).
       - name: Audit digest-pinned containers
         run: tools/supply-chain/audit-containers.sh
+
+      # The Actions audit is the third population in this job and the cheapest:
+      # it reads the checked-out tree and its own baseline and makes no network
+      # call at all, so it costs milliseconds (EOP-236, ADR-073). `if: always()`
+      # for the same reason the plugin audit carries it -- three independent
+      # populations, and a reader needs all three verdicts from one run rather
+      # than the first one to fail.
+      #
+      # Unlike the other two, one of its checks does not consult the baseline:
+      # any `uses:` reference that is not a 40-hex commit SHA fails outright, so
+      # the next action added by tag fails on its first commit instead of
+      # passing silently until somebody remembers to declare it.
+      - name: Audit pinned GitHub Actions
+        if: always()
+        run: tools/supply-chain/audit-actions.sh
 
       # No `cache: npm` here, and that is deliberate rather than an
       # oversight. The manifest this job audits is generated at run time
@@ -922,7 +937,7 @@ jobs:
       # would fall back to whatever Node the runner image happens to ship.
       - name: Set up Node 22
         if: always()
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -1040,7 +1055,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # No `setup-node`: Trivy reads `ui/package-lock.json` as a file rather
       # than installing it, so the npm half of this job needs no Node.
@@ -1066,7 +1081,7 @@ jobs:
       # mode this whole design refuses. The network remains reachable and a
       # resolution failure remains a loud exit 2. Warming the cache is a
       # way of not provoking the rate limiter, not a way of tolerating it.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '21'
@@ -1078,7 +1093,7 @@ jobs:
       # populating a second copy from cold. The save key differs so that two
       # jobs in the same run do not race to write one key.
       - name: Cache Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-cve-${{ hashFiles('**/pom.xml') }}
@@ -1149,7 +1164,7 @@ jobs:
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Trivy vulnerability database
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.cache-date.outputs.date }}
@@ -1308,7 +1323,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # No `setup-java`, no `setup-node`, no cache, and no service
       # container. This job reads JSON and hashes files; `python3` and
@@ -1381,7 +1396,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Compare front-end SonarQube issue counts against the committed baseline
         run: tools/sonar/ratchet-ui.sh
@@ -1453,13 +1468,13 @@ jobs:
       run:
         working-directory: e2e
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # `e2e/` is a third npm project alongside `ui/`, with its own lockfile
       # and its own Node floor of 22.12. `node-version: 22` resolves to the
       # latest 22.x and so clears that patch floor, exactly as the `ui` job
       # relies on.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -1474,19 +1489,12 @@ jobs:
       - name: Typecheck the suite
         run: npm run typecheck
 
-      # `--with-deps` also installs the system libraries the three browsers
-      # need, which no npm cache can hold, so this is not cached: the browser
-      # binaries alone would still leave the apt step to run, and the suite
-      # itself dominates the job's wall clock either way.
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
       # Jobs do not share a Docker daemon, so the images the `image` job built
       # travel as an artifact. This is what makes the suite a test of the
       # artifact we would ship rather than of a second build of the same
       # source: nothing here rebuilds from the working tree.
       - name: Download the images built by the image job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ci-images
           path: image-export
@@ -1525,10 +1533,58 @@ jobs:
       # is not redundant with `--wait` above: `--wait` proves each container's
       # own healthcheck passes, and says nothing about host port publication
       # or the TLS handshake.
+      # The browsers arrive inside a digest-pinned image rather than from
+      # `npx playwright install --with-deps`, which downloaded three browser
+      # builds from Microsoft's CDN with no content verification and
+      # `apt-get install`ed their system libraries as root — the
+      # highest-privilege unpinned download in this pipeline (EOP-236,
+      # ADR-073). The digest below is the one thing that makes this a pin: the
+      # `v1.63.0-noble` tag is mutable, and Playwright pins exact browser
+      # revisions per release but does not checksum what the CDN returns, so a
+      # version number alone would not have been one. `audit-containers.sh`
+      # holds this reference against `expected-containers.json`, so the image
+      # cannot be moved or dropped without a reviewed baseline change.
+      #
+      # The tag is hard-coupled to `@playwright/test` in `e2e/package-lock.json`
+      # — Playwright refuses to run against browsers built for another release
+      # — so bumping one means bumping both in the same commit.
+      # `PlaywrightImagePinTest` fails the build if they disagree.
+      #
+      # `--network host` is what lets the suite's health gate and every request
+      # reach the stack on the host's published 8443; `--ipc host` is
+      # Playwright's own recommendation and avoids Chromium exhausting the
+      # default 64 MB /dev/shm. The bind mount is `e2e/` alone, which is
+      # sufficient because `npm ci` has already populated `e2e/node_modules` on
+      # the runner. `-u` matters for the steps that follow rather than for this
+      # one: without it `results.json`, `playwright-report/` and
+      # `test-results/` land root-owned in the workspace and the three
+      # `upload-artifact` steps read them as the runner user. A non-root uid has
+      # no passwd entry in the image, so `HOME` is set explicitly or npm writes
+      # its cache to `/` and fails.
+      #
+      # One consequence worth knowing before adding a dependency to `e2e/`: the
+      # image ships its own Node — 24.20.0 at this digest — so `npm ci` and
+      # `npm run typecheck` above run under the Node 22 that `setup-node`
+      # installed, while the suite itself runs under Node 24. That is safe only
+      # because `e2e/`'s three devDependencies are pure JavaScript and the
+      # browsers come from the image, so nothing is compiled against the
+      # installing Node. `engines.node >= 22.12` is satisfied by both. A
+      # dependency with a native component would break on exactly this seam.
       - name: Run the Playwright suite
         env:
           E2E_REUSE_STACK: 'true'
-        run: npx playwright test
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network host \
+            --ipc host \
+            -u "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -e E2E_REUSE_STACK \
+            --mount type=bind,source="$(pwd)",target=/e2e \
+            --workdir /e2e \
+            mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 \
+            npx playwright test
 
       # Acceptance criteria 1 and 5, second half: the outcome has to be
       # legible in the run summary, and a failure has to name the scenario
@@ -1639,7 +1695,7 @@ jobs:
 
       - name: Upload stack logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-stack-logs
           path: e2e-stack-logs/
@@ -1658,7 +1714,7 @@ jobs:
       # by the build rather than by this comment.
       - name: Upload the Playwright report and traces
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-playwright-report
           path: |
@@ -1674,7 +1730,7 @@ jobs:
       # the artifact above.
       - name: Upload the machine-readable result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-results
           path: e2e/results.json

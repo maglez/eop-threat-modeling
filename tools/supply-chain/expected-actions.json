@@ -1,0 +1,157 @@
+{
+  "_comment": [
+    "BASELINE FOR tools/supply-chain/audit-actions.sh -- READ docs/adr/ADR-073-supply-chain-pin-actions-and-browsers.md BEFORE EDITING.",
+    "",
+    "WHAT THIS FILE IS. It records every third-party GitHub Action this repository",
+    "invokes, the 40-hex commit SHA each one is pinned to, and the release tag that",
+    "SHA carried at the moment the pin was last reviewed. audit-actions.sh compares",
+    "today's workflow files against these values and fails on any difference.",
+    "",
+    "THIS ONE IS A POLICY, NOT MERELY A TRIPWIRE -- and that makes it the STRONGER",
+    "of the three baselines in this directory, which is the opposite of what its",
+    "sibling expected-containers.json says about itself. The difference is what the",
+    "identifier commits to. A container digest IS its content, so a pin cannot go",
+    "bad and that baseline can only tell you a pin changed. An npm version string is",
+    "republishable, so expected-plugins.json is a compromise tripwire. A git commit",
+    "SHA is content-addressed like a digest AND the thing being pinned is mutable by",
+    "default -- `uses: actions/checkout@v4` follows a tag the action's owner can move",
+    "onto any commit at will. So this file does something neither sibling can: it",
+    "makes the UNPINNED FORM ITSELF a failure. The audit rejects any `uses:`",
+    "reference that is not 40 hex characters, whether or not it appears below.",
+    "",
+    "WHY THIS IS NOT PAPERWORK. In March 2025 tj-actions/changed-files had its tags",
+    "retargeted onto a commit that dumped CI runner memory -- including secrets --",
+    "into the build log, and every workflow in the world pinned to `@v35` executed",
+    "it on the next run with no diff to review and no version number changing. A SHA",
+    "pin is the documented mitigation. This repository has no secrets today, which",
+    "bounds the damage but does not make the pin optional: the `image` job pushes to",
+    "GHCR with a token GitHub mints for it, and `perf-trend` is the one job that can",
+    "write to the repository.",
+    "",
+    "THE HONEST COST, stated so nobody discovers it as a surprise. A SHA pin freezes",
+    "security fixes too. `actions/checkout@v4` would have picked up a patched v4.4.1",
+    "on its own; pinned, it will not, and NOTHING IN THIS REPOSITORY ENFORCES AN",
+    "UPGRADE CADENCE -- there is no Dependabot configuration and this audit is",
+    "deliberately network-free, so it cannot tell you a newer release exists. That",
+    "residual is accepted and recorded in ADR-073; the retiring condition named",
+    "there is the adoption of an automated bump, at which point this file becomes",
+    "the thing that reviews its pull requests rather than the thing that blocks it.",
+    "",
+    "FIELDS, all mandatory.",
+    "  sha              -- the 40-hex commit the workflow pins. Lower case.",
+    "  tag              -- the exact semver release that SHA carried when reviewed,",
+    "                      e.g. v4.4.0. NOT the major alias: `v4` is what we are",
+    "                      moving away from, so recording it here would defeat the",
+    "                      point of having a human-readable record at all.",
+    "  major            -- the major alias the tag belongs to. Kept separately",
+    "                      because it is what a reader recognises and what the",
+    "                      upstream release notes are indexed by.",
+    "  reference_count  -- how many `uses:` sites invoke this action. Compared, so",
+    "                      adding a tenth checkout step without updating this file",
+    "                      fails rather than passing silently.",
+    "  occurrences      -- every tracked file that must carry the reference.",
+    "                      BIDIRECTIONAL: a listed file no longer carrying it fails,",
+    "                      and a workflow file carrying a reference to an action that",
+    "                      is not declared here fails too.",
+    "  note             -- what the action does here and what moving its pin costs.",
+    "",
+    "HOW TO MOVE A PIN. Resolve the new commit for the tag you intend",
+    "  gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha",
+    "read the release notes for what changed, then update the workflow and this file",
+    "IN THE SAME REVIEWED COMMIT. Never update this file to silence a red build: a",
+    "SHA you did not deliberately choose is exactly the tj-actions failure mode with",
+    "one extra step."
+  ],
+  "actions": {
+    "actions/checkout": {
+      "sha": "11d5960a326750d5838078e36cf38b85af677262",
+      "tag": "v4.4.0",
+      "major": "v4",
+      "reference_count": 9,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Checks the repository out in every job that reads a tracked file. The most-invoked action here and the one the tj-actions incident maps onto most directly, because it runs first and therefore runs before any step that could observe it misbehaving."
+    },
+    "actions/setup-java": {
+      "sha": "cf277c60eb25467037889841efdb72551f06f6c3",
+      "tag": "v4.9.1",
+      "major": "v4",
+      "reference_count": 2,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Provisions the JDK for the `build` job and for the Sonar scan. Moving this pin does not change the JDK -- the version is chosen by the `with:` block, not by the action -- so a bump here is a bump of the provisioning code only."
+    },
+    "actions/cache": {
+      "sha": "0057852bfaa89a56745cba8c7296529d2fc39830",
+      "tag": "v4.3.0",
+      "major": "v4",
+      "reference_count": 3,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Caches the Maven repository and the SonarQube scanner download. A cache action is a higher-value target than its mundane name suggests: it both reads and writes a store that later steps trust, so a compromised build of it could poison a dependency tree that no lockfile check would notice."
+    },
+    "actions/upload-artifact": {
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "tag": "v4.6.2",
+      "major": "v4",
+      "reference_count": 6,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Publishes build reports, the k6 results, the two CI images the `e2e` job consumes, and the three end-to-end artifacts. Paired with actions/download-artifact below -- the two must be kept on compatible majors, because v4 artifacts are not readable by a v3 download and the failure is a confusing 404 rather than a version error."
+    },
+    "actions/setup-node": {
+      "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "tag": "v4.4.0",
+      "major": "v4",
+      "reference_count": 3,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Provisions Node 22 for the `ui` job, the `supply-chain` job and the `e2e` job. The `e2e` site is the one that matters for ADR-073: it still installs Node on the runner because the Playwright suite's own npm tree is installed there, while the browsers now come from a digest-pinned container instead of a CDN download."
+    },
+    "actions/download-artifact": {
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "tag": "v4.3.0",
+      "major": "v4",
+      "reference_count": 2,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Retrieves the k6 summary for the `perf-trend` job and the `ci-images` archive for the `e2e` job. Must stay on a major compatible with actions/upload-artifact above."
+    },
+    "docker/setup-buildx-action": {
+      "sha": "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f",
+      "tag": "v3.12.0",
+      "major": "v3",
+      "reference_count": 1,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Configures the buildx builder the `image` job builds both production images with. Note this is the same tool the container baseline's verification instructions tell you to run by hand (`docker buildx imagetools inspect`), so a change here changes how digests are resolved as well as how images are built."
+    },
+    "docker/build-push-action": {
+      "sha": "10e90e3645eae34f1e60eeb005ba3a3d33f178e8",
+      "tag": "v6.19.2",
+      "major": "v6",
+      "reference_count": 2,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Builds the API image from `Dockerfile` and the front-end image from `ui/Dockerfile`. The highest-consequence action in the workflow, because its output is the artifact that ships -- a compromised build of it could alter an image that every later job, including `e2e`, would then test and pass."
+    },
+    "docker/login-action": {
+      "sha": "c94ce9fb468520275223c153574b00df6fe4bcc9",
+      "tag": "v3.7.0",
+      "major": "v3",
+      "reference_count": 1,
+      "occurrences": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "Authenticates to GHCR before the push, on `github.event_name == 'push'` only. This is the single site in the workflow that handles a credential of any kind -- the token GitHub mints for the job -- which is precisely the class of step the tj-actions payload existed to harvest."
+    }
+  }
+}

@@ -201,42 +201,64 @@ future audits without new evidence.
 
 ### GitHub Actions supply chain (`.github/workflows/` — CI only, never in the shipped image)
 
-*Recorded 2026-09-05 (EOP-174), after a full-stack security audit raised it as an
-informational finding.* This is the **third** dependency surface in the repository, and
-until now the only one with no stated position — the seven OpenCode npm plugins are
-digest-audited by `tools/supply-chain/audit-plugins.sh` against an expected baseline, the
-three pinned containers by `audit-containers.sh` ([ADR-064](docs/adr/ADR-064-pinned-container-audit-coverage.md)),
-and the whole Maven plugin layer is an acknowledged gap documented under build quality.
+*Recorded 2026-09-05 (EOP-174) as an accepted residual, and **closed 2026-09-07 by EOP-236**
+([ADR-073](docs/adr/ADR-073-supply-chain-coverage-for-actions-and-browsers.md)). The
+paragraphs below are kept because the reasoning that made the acceptance defensible is also
+the reasoning that says what to do when the next action arrives — but the acceptance itself
+is spent, and citing this section as a live control is now wrong.*
 
-- **Every Actions reference is pinned by a mutable major tag, and none by commit SHA.**
-  The workflow carries **22 `uses:` references across 9 distinct actions**: `actions/checkout@v4`,
-  `actions/setup-java@v4`, `actions/setup-node@v4`, `actions/cache@v4`,
-  `actions/upload-artifact@v4`, `actions/download-artifact@v4`,
-  `docker/setup-buildx-action@v3`, `docker/build-push-action@v6` and
-  `docker/login-action@v3`. Note the count of *references* is not the count of *actions* —
-  `actions/checkout@v4` alone appears eight times.
-- **Do not confuse this with the container pins in the same file.** The k6 and Trivy steps
-  and the SonarQube scanner are digest-pinned **container images**, not `uses:` actions, so
-  no `uses:` line in the workflow is SHA-pinned. An earlier reading that cited them as a
-  SHA-pinned contrast was wrong.
-- **Why the residual risk is assessed low.** Every publisher is first-party — the `actions`
-  and `docker` organisations, both GitHub-operated or GitHub-partnered. A malicious release
-  would require compromising one of those organisations' release process, and would be a
-  broad ecosystem event rather than an attack on this repository. The workflow's default
-  token is `permissions: contents: read`, with the single `contents: write` scoped to the
-  `perf-trend` job, so the blast radius of a compromised action is bounded well short of
-  the repository's contents.
-- **What is accepted, precisely.** A retag of `v4` to a different commit would execute
-  attacker-controlled code in CI on the next run, with no signal. That is accepted for
-  first-party publishers only.
-- **What would change this assessment.** Any third-party action entering the workflow —
-  anything outside `actions/*` and `docker/*` — invalidates the reasoning above and must be
-  SHA-pinned from its first commit, because the publisher-trust argument does not extend to
-  it. Two pinning disciplines coexisting is acceptable; an unpinned third-party action is not.
-- **Open remediation:** **EOP-202** tracks SHA-pinning all 22 references with version
-  comments (so Dependabot can still propose bumps) and extending `tools/supply-chain/` to
-  audit the workflow layer, so a pin cannot silently drift back to a tag. Until that lands,
-  this section *is* the control: it is a documented acceptance, not an oversight.
+- **Every `uses:` reference is pinned to a 40-hex commit SHA, and an audit keeps it that way.**
+  `.github/workflows/ci.yml` carries **29 `uses:` references across 9 distinct actions** —
+  `actions/checkout`, `actions/setup-java`, `actions/setup-node`, `actions/cache`,
+  `actions/upload-artifact`, `actions/download-artifact`, `docker/setup-buildx-action`,
+  `docker/build-push-action` and `docker/login-action` — each written
+  `owner/repo@<sha> # vX.Y.Z`, with the exact semver in the trailing comment because the SHA
+  alone tells a reader nothing. Note the count of *references* is not the count of *actions*:
+  `actions/checkout` alone appears nine times. The figure was **22** when this section was
+  written; EOP-220's `e2e` job took it to 29, which is one reason a hand-maintained prose
+  count was the wrong instrument.
+- **`tools/supply-chain/audit-actions.sh` is the control now, and it is stronger than a
+  baseline comparison.** It holds every reference against
+  `tools/supply-chain/expected-actions.json` bidirectionally — an undeclared action fails, a
+  declared action nobody references fails, one action pinned to two different commits fails,
+  and a `reference_count` or `occurrences` disagreement fails. Crucially **one of its checks
+  does not consult the baseline at all**: any `uses:` value that is not `owner/repo@<40 hex>`
+  fails outright, so an action added by tag fails on its first commit rather than being
+  quietly admitted and recorded. That is what makes this a policy rather than a tripwire.
+- **Do not confuse this with the container pins in the same file.** The k6 and Trivy steps,
+  the SonarQube scanner and the Playwright browser image are digest-pinned **container
+  images** audited by `audit-containers.sh`, not `uses:` actions. Before EOP-236 no `uses:`
+  line was SHA-pinned at all; an earlier reading that cited the containers as a SHA-pinned
+  contrast was wrong, and the two mechanisms remain separate baselines on purpose.
+- **What the pins cost, and the residual that replaces the old one.** A SHA pin freezes
+  security fixes as well as attacks. There is no Dependabot configuration in this repository
+  and the audit is deliberately network-free, so nothing tells us a newer release exists —
+  the pins go stale silently and are moved by hand with
+  `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha`, updating
+  `expected-actions.json` in the same commit. **This is the accepted residual as of
+  2026-09-07**, and its retiring condition is the adoption of an automated bump mechanism.
+  It is a deliberate trade: a stale pin is a known-good commit, whereas a moving tag is an
+  unknown one.
+- **Why the original acceptance was defensible, and why it still governs new arrivals.**
+  Every publisher is first-party — the `actions` and `docker` organisations, both
+  GitHub-operated or GitHub-partnered — so a malicious release would have required
+  compromising one of those organisations' release processes and would have been a broad
+  ecosystem event rather than an attack on this repository. The workflow's default token is
+  `permissions: contents: read`, with the single `contents: write` scoped to the `perf-trend`
+  job, so the blast radius of a compromised action was bounded well short of the
+  repository's contents. Both facts still hold; they are now belt as well as braces.
+- **What would still change this assessment.** A third-party action entering the workflow —
+  anything outside `actions/*` and `docker/*` — is a different risk class, because the
+  publisher-trust argument above does not extend to it. SHA-pinning is now automatic for it
+  (the audit permits nothing else), but the *decision to depend on it at all* needs an
+  argument, and a first-party alternative should be preferred. The tj-actions/changed-files
+  tag-retargeting incident of March 2025, which leaked runner memory into public build logs,
+  is the concrete precedent.
+- **The `supply-chain` job is still deliberately not a required status check.** The required
+  gates on `main` are `build`, the two Sonar ratchets and `dependency-cve` — all of them
+  about code that ships. A finding in a CI-only dependency surface is a thing to know about,
+  not a reason to block an unrelated merge; the three audits carry `if: always()` so a reader
+  gets all three verdicts from one run.
 
 ### OpenCode dev tooling (`.opencode/` — not shipped, never in production)
 - **`tiktoken`** (transitive via `@anthropic-ai/tokenizer`) — offline WASM
