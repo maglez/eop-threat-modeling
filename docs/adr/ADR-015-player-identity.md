@@ -135,6 +135,79 @@ unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
 ## Amendments
 
+**2026-09-08 — duplicate display names are admitted by decision, not by omission
+(EOP-230).**
+
+**What is decided.** Display names are labels, not identifiers. Two players may
+share one. No uniqueness constraint will be added to `display_name` in the
+`player` table, none enforced in `GameSession.join`, and none in either use case.
+The server distinguishes players by `IdentityTokenHash`; the humans on the call
+distinguish them from each other.
+
+**Why the alternative — rejecting a collision on join — was considered and
+rejected.** Three reasons:
+
+*There is no domain concept of "the same person" to enforce.* Identity is a
+server-issued opaque token (this ADR's own decision). Two players named "Alice"
+are two players; the server has no basis for calling either a duplicate. A
+uniqueness rule would enforce a social convention as a technical invariant.
+
+*An equality rule over this type would read as a guarantee while enforcing almost
+nothing.* `DisplayName.of(String)` applies `String.strip()` and the record's
+generated `equals` is `String.equals` on the result. No case folding, no Unicode
+normalisation (`java.text.Normalizer` appears nowhere in this file), no collapsing
+of internal whitespace. So `"alice"`, `"ALICE"`, `"Аlice"` with a Cyrillic **А**,
+and `"Al\u200Bice"` with a zero-width space are four distinct names, three of them
+visually indistinguishable from the fourth at a glance. A player refused for
+`"Alice"` succeeds with `"Аlice"` — and the facilitator is then worse off than
+before, because the collision they were protected from is replaced by one they
+cannot even see. Closing that properly needs NFC normalisation, case folding,
+zero-width stripping and Unicode TR39 confusable mapping, which is a standing
+maintenance commitment disproportionate to a facilitated session of at most six
+people who are on a call together.
+
+*It hands one player a denial tool.* First-come-first-served on a free-text label
+lets whoever joins first take a name another player wanted, with no account system
+to appeal to.
+
+**Why the other alternative — disambiguating for display only, rendering "Alice
+(2)" — was also rejected.** It derives a label from the same name comparison, so
+it inherits every normalisation problem above; and the ordinal is computed from
+the current roster at render time, so it is not stable for the life of the
+session.
+
+**What is done instead, and the honest limit of it.** The operational worry that
+motivated the ticket is real and is *not* dismissed: with six seats, a facilitator
+seeing two "Alice" rows cannot tell two humans apart from one human who
+double-joined from a second tab and is silently holding a seat. `sessionStorage`
+is tab-scoped (this ADR's own consequence), so that ghost seat is a genuine path,
+not a hypothetical. The mitigation is to render the server-assigned seat number
+beside the name in the lobby, filed as its own follow-up.
+
+The seat number does **not** let anyone deduce which case they are in by
+arithmetic. Seats are assigned in arrival order, so two distinct humans joining
+back to back are just as consecutive as one human double-joining; there is no
+inference to be drawn from adjacency, and any claim otherwise is false. What the
+seat number supplies is a *stable, server-assigned, non-attacker-controlled handle*
+for a row — enough to ask "Alice in seat 3, are you there?" on the call. The
+ambiguity is resolved by that conversation.
+
+**The regression pin.** `e2e/tests/boundary.spec.ts` Scenario 2, `admits a second
+player using a name already taken`, asserts that the duplicate
+**is** seated. Under this decision it stands as the pin. Inverting it means
+amending this ADR first.
+
+**The triggers for revisiting.** This decision is falsifiable rather than
+permanent. Reconsider if:
+
+- Play without a facilitator present on a call — asynchronous or unmoderated —
+  removes the social disambiguation this decision leans on entirely.
+- The lobby ceases to show any per-player server-assigned handle.
+- A materially larger table. At six seats an accidental collision is rare and
+  cheap; the argument weakens as the roster grows.
+- Any display name becomes a key, a lookup, or an audit subject rather than a
+  rendered label.
+
 **2026-08-20 — the token digest is compared in constant time, and a standing
 prohibition now has somewhere durable to live (EOP-120).**
 

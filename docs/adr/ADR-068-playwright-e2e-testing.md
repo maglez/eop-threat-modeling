@@ -392,10 +392,12 @@ anywhere in the domain. `DisplayName` appears in only two use cases (`JoinSessio
 `CreateSessionUseCase`) and is never compared against seated players; no repository method looks
 a player up by name. A second "Alice" is **admitted** at a new seat.
 
-This is pinned as *observed behaviour*, not endorsed. **EOP-230** owns the decision of whether
-duplicate names should be rejected, and will update this scenario in the same change if it does.
-The test is written to fail loudly if a uniqueness rule is ever introduced without revisiting it:
-the assertion is that the duplicate *is* seated.
+**EOP-230 has now decided to accept this behaviour.** The decision is recorded in the
+[2026-09-08 amendment to ADR-015](ADR-015-player-identity.md#amendments), which argues the
+rejection alternative and the display-only disambiguation alternative, and rejects both. The
+scenario therefore stands as the deliberate pin. The test is written to fail loudly if a
+uniqueness rule is ever introduced without revisiting it: the assertion is that the duplicate
+*is* seated.
 
 ### Finding 3 — a player who closes their tab mid-game is locked out permanently
 
@@ -479,7 +481,8 @@ rewrite describes actual behaviour rather than aspiration.
 Three findings were filed as Jira Tasks (the project has no Bug type), all linked `Relates` to
 EOP-218:
 
-- **EOP-230** — decide whether duplicate display names should be rejected.
+- **EOP-230** — duplicate display names are admitted. The decision is recorded in the
+  [2026-09-08 amendment to ADR-015](ADR-015-player-identity.md#amendments).
 - **EOP-231** — a player who loses their session token cannot return to their seat (covers both
   the mid-game lockout and the LOBBY ghost seat).
 - **EOP-232** — `LobbyScreen.tsx:37` duplicates the minimum-players rule as a hardcoded `3`;
