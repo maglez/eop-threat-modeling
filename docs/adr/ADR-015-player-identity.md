@@ -224,6 +224,20 @@ facilitator ends the session and everyone re-joins a fresh lobby. For a
 co-located, facilitated workshop of at most six people on a call together, that
 is a smaller cost than any of the three options above.
 
+One caveat on that remedy, because it is a dependency rather than a detail. The
+endpoint is gated:
+`EndSessionController.java:54` (anchor: `ConditionalOnProperty`) makes the whole
+controller conditional on `eop.features.trick-play`, so with that flag off the
+bean does not exist and the path answers the framework's own 404. The flag ships
+**on** — `src/main/resources/application.yml` sets `trick-play: true`, flipped on
+by `EOP-70` and recorded in `src/test/resources/feature-flag-registry.yml` with
+`shipped-default: true` and no expiry, with no override in the `prod` profile —
+so the remedy is available in every environment this application is deployed to
+today, and `FeatureFlagRegistryTest` fails the build if that position drifts
+silently. What this does mean is that the acceptance above is *conditional on a
+flag staying on*: anyone turning `trick-play` off removes the only remedy for a
+ghost seat, and would be reopening this decision rather than toggling a feature.
+
 The visibility gap — a facilitator cannot see *which* row is the ghost — is
 mitigated by rendering the server-assigned seat number beside each name in the
 lobby, already filed as `EOP-247` by the EOP-230 amendment below. That is a
@@ -240,8 +254,10 @@ this ADR first.
 **What would reopen this.** Any one of: the workshop stops being facilitated, so
 there is no one to end and restart a session; sessions grow long enough that
 restarting costs real work rather than a minute; a seat-vacating operation arrives
-for another reason, at which point option 4 is nearly free; or `EOP-247` ships and
-facilitators still cannot resolve a ghost seat in practice.
+for another reason, at which point option 4 is nearly free; `eop.features.trick-play`
+is turned off, which removes the end-session remedy the acceptance above depends
+on; or `EOP-247` ships and facilitators still cannot resolve a ghost seat in
+practice.
 
 **2026-09-08 — duplicate display names are admitted by decision, not by omission
 (EOP-230).**
