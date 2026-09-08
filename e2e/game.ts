@@ -183,6 +183,123 @@ export async function closeSeats(seats: readonly Seat[]): Promise<void> {
 }
 
 /**
+ * Times a submit may be dispatched when it is observed to have had no effect (EOP-238).
+ *
+ * Three rather than one because a lost click leaves no trace to wait for. The first
+ * CI run of this suite lost Carol's join submit in Firefox: the click was reported
+ * successful, both controlled inputs held their values, no error summary rendered,
+ * the button was still enabled and idle — and the server logged no request at all
+ * for the 10.26 s the assertion then spent timing out. A re-dispatch is the only
+ * thing that can recover from that; waiting longer cannot.
+ */
+const SUBMIT_ATTEMPTS = 3;
+
+/**
+ * How long a dispatched submit has to become *observable*.
+ *
+ * Deliberately short, and deliberately not a wait for the server: the observed join
+ * `POST` was handled in six milliseconds, and this window closes on the first paint
+ * that shows the form is no longer idle. The wait for the server's own answer is the
+ * caller's terminal assertion, on its own default timeout. Lengthening this buys
+ * nothing — a submit that never fired never becomes observable.
+ */
+const SUBMIT_EFFECT_TIMEOUT_MS = 2_000;
+
+/**
+ * Waits until a form's autofocused field actually holds focus.
+ *
+ * Both forms mark their first field `autoFocus` (`JoinSessionForm.tsx:106`,
+ * `CreateSessionForm.tsx:99`), and Firefox processes the autofocus candidate at the
+ * end of a rendering opportunity, scrolling the element into view when it does. A
+ * flush landing between Playwright's hit test and its dispatched mouse event moves
+ * the page under the click. Asserting focus is the observable condition that the
+ * flush has already happened, so the window is closed before anything is typed —
+ * a condition on state rather than a longer timeout.
+ *
+ * @param seat the seat whose form is on screen
+ * @param field the field the form autofocuses
+ * @param formName the form's name, for the failure message
+ */
+async function expectFormReady(seat: Seat, field: Locator, formName: string): Promise<void> {
+    await expect(field, `${seat.displayName}'s ${formName} form never took autofocus`).toBeFocused();
+}
+
+/**
+ * Clicks a form's submit button and returns once the click is observed to have taken effect.
+ *
+ * Every branch of a form's `handleSubmit` leaves something on screen: a failed
+ * client-side validation renders the error summary, an in-flight request disables
+ * the button and relabels it, a server refusal renders the summary, and a success
+ * swaps in the lobby. So the disjunction of those three is proof that `onSubmit`
+ * fired — and their joint absence, with the button idle, is proof that it did not.
+ *
+ * Re-dispatching is safe *only* under that proof, which is why the poll is on the
+ * observation rather than on the outcome. A submit that took effect issued a request
+ * and must never be clicked again: doing so would join a second player, and the
+ * scenario would then fail on a player count instead of here. A submit that had no
+ * effect issued nothing, so re-dispatching it cannot double anything.
+ *
+ * @param seat the seat whose form is on screen
+ * @param submitName the accessible name of the idle submit button
+ * @param busyName the accessible name that button takes while the request is in flight
+ */
+async function submitUntilHandled(seat: Seat, submitName: string, busyName: string): Promise<void> {
+    const submit = seat.page.getByRole('button', { name: submitName });
+    const busy = seat.page.getByRole('button', { name: busyName });
+    const lobby = seat.page.getByRole('heading', { level: 1, name: 'Game Lobby' });
+    const refusal = seat.page.getByRole('alert');
+
+    const handled = async (): Promise<boolean> =>
+        (await busy.isVisible()) || (await refusal.isVisible()) || (await lobby.isVisible());
+
+    for (let attempt = 1; attempt <= SUBMIT_ATTEMPTS; attempt += 1) {
+        await submit.click();
+        try {
+            await expect.poll(handled, { timeout: SUBMIT_EFFECT_TIMEOUT_MS, intervals: [25, 50, 100, 250] }).toBe(true);
+            return;
+        } catch {
+            if (attempt === SUBMIT_ATTEMPTS) {
+                throw new Error(
+                    `${seat.displayName}'s "${submitName}" submit produced no observable effect in `
+                        + `${SUBMIT_ATTEMPTS} attempts: no request in flight, no error summary and no lobby. `
+                        + 'The click is being dispatched but the form is not submitting.',
+                );
+            }
+        }
+    }
+}
+
+/**
+ * Fills the join form and waits until both fields have committed their values.
+ *
+ * `fill` sets the DOM value and dispatches `input`; these assertions are the
+ * observable proof that the controlled components' React state took it, which is
+ * what the submit handler reads. The code's *length* is asserted rather than the
+ * code, because a matcher prints its received value on failure and a custom
+ * message becomes a step title even on success — either would publish it (ADR-071).
+ * Length is also invariant under the field's own uppercasing.
+ *
+ * @param seat the joining seat, on the join screen
+ * @param joinCode the code to submit — need not be well formed
+ */
+async function fillJoinForm(seat: Seat, joinCode: string): Promise<void> {
+    const codeField = seat.page.locator('#join-code');
+    const nameField = seat.page.locator('#display-name');
+
+    await expectFormReady(seat, codeField, 'join');
+    await codeField.fill(joinCode);
+    await nameField.fill(seat.displayName);
+
+    await expect
+        .poll(async () => (await codeField.inputValue()).length, {
+            timeout: SUBMIT_EFFECT_TIMEOUT_MS,
+            message: `${seat.displayName}'s join code did not commit to the form`,
+        })
+        .toBe(joinCode.length);
+    await expect(nameField, `${seat.displayName}'s name did not commit to the join form`).toHaveValue(seat.displayName);
+}
+
+/**
  * Creates a session as facilitator and returns the join code shown in the lobby.
  *
  * The code is read from the DOM rather than constructed, because it is generated
@@ -197,8 +314,13 @@ export async function closeSeats(seats: readonly Seat[]): Promise<void> {
 export async function createSession(seat: Seat): Promise<string> {
     await seat.page.getByRole('button', { name: 'Create a session' }).click();
     await expect(seat.page.getByRole('heading', { level: 1, name: 'Create a session' })).toBeVisible();
-    await seat.page.locator('#display-name').fill(seat.displayName);
-    await seat.page.getByRole('button', { name: 'Create a session' }).click();
+
+    const nameField = seat.page.locator('#display-name');
+    await expectFormReady(seat, nameField, 'create');
+    await nameField.fill(seat.displayName);
+    await expect(nameField, `${seat.displayName}'s name did not commit to the create form`).toHaveValue(seat.displayName);
+
+    await submitUntilHandled(seat, 'Create a session', 'Creating session...');
 
     await expect(seat.page.getByRole('heading', { level: 1, name: 'Game Lobby' })).toBeVisible();
     const code = await seat.page.locator('.govuk-inset-text strong').first().textContent();
@@ -220,9 +342,8 @@ export async function createSession(seat: Seat): Promise<string> {
 export async function joinSession(seat: Seat, joinCode: string): Promise<void> {
     await seat.page.getByRole('button', { name: 'Join a session' }).click();
     await expect(seat.page.getByRole('heading', { level: 1, name: 'Join a session' })).toBeVisible();
-    await seat.page.locator('#join-code').fill(joinCode);
-    await seat.page.locator('#display-name').fill(seat.displayName);
-    await seat.page.getByRole('button', { name: 'Join a session' }).click();
+    await fillJoinForm(seat, joinCode);
+    await submitUntilHandled(seat, 'Join a session', 'Joining session...');
     await expect(seat.page.getByRole('heading', { level: 1, name: 'Game Lobby' })).toBeVisible();
 }
 
@@ -256,9 +377,8 @@ export async function expectJoinRefused(seat: Seat, joinCode: string): Promise<s
     await seat.page.getByRole('button', { name: 'Join a session' }).click();
     const heading = seat.page.getByRole('heading', { level: 1, name: 'Join a session' });
     await expect(heading).toBeVisible();
-    await seat.page.locator('#join-code').fill(joinCode);
-    await seat.page.locator('#display-name').fill(seat.displayName);
-    await seat.page.getByRole('button', { name: 'Join a session' }).click();
+    await fillJoinForm(seat, joinCode);
+    await submitUntilHandled(seat, 'Join a session', 'Joining session...');
 
     const summary = seat.page.getByRole('alert');
     await expect(summary, `${seat.displayName}'s refused join showed no error summary`).toBeVisible();
