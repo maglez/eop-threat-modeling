@@ -345,7 +345,7 @@ maps to **404** — deliberately the same status an absent session gets.
 
 So a 404 from the leaderboard is a legitimate transient, not a failure. The front end already treats
 it as one, offering a `Retry loading results` control
-(`GameOverScreen.tsx:207`, anchor: `Retry loading results`).
+(`GameOverScreen.tsx:326`, anchor: `Retry loading results`).
 
 **Consequence for the suite:** `expectGameOver` (`e2e/game.ts:636`, anchor: `expectGameOver`) asserts the `Game over` heading
 first, because that heading renders unconditionally, and only then looks for the leaderboard table —
@@ -521,10 +521,13 @@ resets the session straight to `IN_PROGRESS` and deals a fresh deck to the same 
 same seats (`NewGameUseCase.java:130`, anchor: `resetToInProgress`).
 `SessionStatus.LOBBY` is not re-entered by any code path.
 
-The front end briefly *renders* the lobby — `ui/src/App.tsx:192` (anchor: `re-dealt`) routes the
-facilitator through `screen: 'lobby'` after the 204 — but `LobbyScreen` observes `IN_PROGRESS` and
-forwards immediately to the game screen. It is a transition, not a destination, and it is the same
-path a mid-game reload already takes (EOP-217's fourth scenario).
+The front end used to briefly *render* the lobby: it routed the facilitator through
+`screen: 'lobby'` after the 204, and `LobbyScreen`, observing `IN_PROGRESS`, forwarded immediately to
+the game screen. It was a transition, not a destination, and the same path a mid-game reload takes
+(EOP-217's fourth scenario). **EOP-233 removed it** — `App.tsx` now routes every seat straight to the
+game screen on the session `GameOverScreen` observed (`ui/src/App.tsx:204`, anchor: `screen: 'game'`),
+so no post-new-game path passes through the lobby at all. The finding above is unaffected: the domain
+never re-entered `LOBBY`, and the front end no longer suggests otherwise. See the EOP-233 amendment.
 
 ### Finding 3 — a tie cannot be arranged, so the tie rules are asserted as invariants
 
@@ -559,6 +562,9 @@ ADR-042, so this suite will need a review when `EOP-83` deletes it.
 
 ### Finding 5 — a participant is stranded when the facilitator starts a new game
 
+**Closed by EOP-233 on 2026-09-08; the record below describes the behaviour as EOP-219 found it, and
+the two assertions it names have since been inverted. See the EOP-233 amendment.**
+
 Found by this suite, filed as **EOP-233**. When the facilitator starts a second game, the
 facilitator advances to it and every other player stays mounted on the previous game's leaderboard
 indefinitely.
@@ -583,7 +589,7 @@ within one test, so a broken locator cannot produce a false pass.
 
 ### Design decision — capture the response the UI already made
 
-`e2e/tests/leaderboard.spec.ts:170` (anchor: `captureLeaderboards`) installs a `page.on('response')`
+`e2e/tests/leaderboard.spec.ts:172` (anchor: `captureLeaderboards`) installs a `page.on('response')`
 listener before the game completes and keeps the last parsed leaderboard body. Every rendered cell
 is then compared against the payload the server actually sent, including `sessionStatus`, which the
 screen does not render at all.
@@ -593,7 +599,7 @@ player-token header name, and asserting against a *second* response would prove 
 requests agree — not that the table on screen matches the bytes that produced it. The capture also
 keeps the suite honest about the tier: nothing is stubbed and no request is intercepted.
 
-`e2e/tests/leaderboard.spec.ts:82` (anchor: `STRIDE_COLUMNS`) mirrors the six STRIDE column labels
+`e2e/tests/leaderboard.spec.ts:84` (anchor: `STRIDE_COLUMNS`) mirrors the six STRIDE column labels
 in canonical order, so a column reordering or a renamed header fails here as well as in the
 front-end unit tests.
 
@@ -672,3 +678,75 @@ Re-dispatching a click is normally dangerous — a second successful submit woul
 ### Correction to prior prose
 
 The EOP-217, EOP-218 and EOP-219 amendments describe `joinSession`, `createSession` and `expectJoinRefused` as adequate for their scenarios. They are — they passed — but the shape they shared (click the submit button, then assert the lobby heading) exposed every caller to the lost-click window. The helpers were not wrong for the scenarios that used them; they were incomplete for the browser engine that ran them. This amendment's rewiring makes them complete.
+
+## Amendment, 2026-09-08 (EOP-233)
+
+EOP-233 closed Finding 5. The fix is in production code, not in the suite, and the two assertions the
+scenario carried for "a future fixer to invert" have been inverted. This amendment records what
+changed, and two things the fix turned up that the original finding did not name.
+
+### The fix
+
+`GameOverScreen` now opens a session subscription, which is what every other screen already did. The
+doorbell carries no state (ADR-015), so each ring provokes a `getSession` read, and a status of
+`IN_PROGRESS` — the only status a second game produces — invokes a callback carrying the observed
+session. `App.tsx` routes on that callback.
+
+**One destination for every seat is the point of the shape.** The old code navigated the facilitator
+off the back of its own 204 and navigated nobody else at all, so the two paths could diverge — and
+did, silently, for as long as this screen opened no subscription. The facilitator now takes the same
+route as a participant: `startNewGame` awaits the 204 and then performs the same read, so a single
+code path serves both. Losing that read is not a lockout even for the facilitator, because its own
+subscription is open and the `HAND_DEALT` its call published rings its own doorbell.
+
+The transitional `screen: 'lobby'` is gone, and Finding 2's second paragraph has been corrected in
+place. Routing every seat straight to the game screen is possible precisely because the callback
+carries the session the screen already read — the caller needs no second request to build the view.
+
+### Correction — the once-only guard has to sit *after* the read
+
+The first implementation checked a `useRef` "already routed" flag before awaiting `getSession`. A unit
+test ringing four doorbells in one `act` block showed the callback firing **four** times: every ring
+cleared the flag before any of their reads landed. The check has to be repeated after the await, and
+the pre-await check dropped entirely — TypeScript narrows the ref to `false` after the first read of
+it, so keeping both makes the second one dead code that `@typescript-eslint/no-unnecessary-condition`
+correctly fails the lint on.
+
+Each ring still gets its own read. Dropping a ring while a read is in flight would be cheaper, and was
+rejected: a read issued before the reset committed can answer `COMPLETED`, so the dropped ring might
+have been the only one whose read would have seen the second game — reintroducing the defect in a
+narrower window. Firing once while reading N times is the correct trade, and it is what `LobbyScreen`
+already does.
+
+### A dead stream is now visible rather than silent
+
+If the event stream fails other than by refusing the token, the screen shows `Lost the live connection
+to this session. Reload the page if the facilitator starts another game.` A dead doorbell puts this
+screen back in exactly the position Finding 5 describes, so it says so, and it names the one recovery
+still open. The message never displaces an existing one: a leaderboard that failed to load is the more
+specific problem and owns that slot. A 403 or 404 still ejects the seat, as the leaderboard read does.
+
+### What the suite asserts now, and what was deleted
+
+The fourth scenario asserts that **every** seat is dealt into the second game and that no seat is
+still showing the finished game's leaderboard. The reload block was **deleted, not adapted**: reloading
+was a stranded participant's only escape, so asserting it after the fix would hide a regression behind
+the very workaround the fix removes. Deleting it also removes three 30-second reload waits.
+
+Note the deck-arithmetic assertions that close the scenario were previously load-bearing on that
+reload — they count hands on every seat, which could only pass once the reloads had recovered the
+participants. They now assert the same thing about a state reached without any manual intervention,
+which is strictly stronger.
+
+### Coverage boundary
+
+`GameOverScreen.test.tsx` covers the subscription: routing on `IN_PROGRESS`, staying put on
+`COMPLETED`, the `onOpen` catch-up read (EOP-224), firing once under a burst, the facilitator's path
+through the same read, the 403 ejection, the dead-stream message, and unsubscribing on unmount —
+20 tests in that file, 274 across the front end.
+
+`App.tsx`'s routing of that callback is covered by the E2E scenario rather than by a unit test, which
+is a deliberate boundary and worth stating rather than leaving to be noticed: `App.test.tsx` drives
+real components against a stubbed `fetch`, so reaching game-over there means playing a whole game
+through stubs. The game-screen-to-game-over routing beside it is untested for the same reason. If that
+boundary is to move, it moves for both.

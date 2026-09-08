@@ -62,13 +62,15 @@ import {
  *    entirely — is owned by `GameOverControllerDisabledIntegrationTest`.
  *
  * The ticket's fourth criterion also turned out to be half true of the
- * application in a way nobody had noticed. Starting a second game moves the
- * *facilitator* on, and strands every other player on the leaderboard of a game
- * that no longer exists, because `GameOverScreen` opens no session subscription.
- * That is a real defect, filed as EOP-233 and not fixed here — this story ships
- * no production code. The fourth scenario therefore pins the behaviour as it is,
- * including the page reload that is currently a participant's only way out, and
- * says so at the assertions a fix will have to invert.
+ * application in a way nobody had noticed. When this suite was first written,
+ * starting a second game moved the *facilitator* on and stranded every other
+ * player on the leaderboard of a game that no longer existed, because
+ * `GameOverScreen` opened no session subscription. That was filed as EOP-233,
+ * and the fourth scenario pinned the behaviour as it then was, at assertions
+ * labelled for whoever fixed it to invert. EOP-233 gave that screen the
+ * subscription the other two always had, so the scenario now asserts what the
+ * criterion asked for in the first place: every seat is dealt into the second
+ * game, without anyone having to guess that reloading would help.
  *
  * One deliberate omission of scope. Everything asserted here is browser-visible.
  * The API's own refusals — a 409 for a session that is not `COMPLETED`, a 403
@@ -484,7 +486,7 @@ test.describe.serial('Leaderboard: the end-of-game summary screen', () => {
      * Declared last, and `describe.serial` is why that is enough: it destroys the
      * completed game the three scenarios above share.
      */
-    test('lets only the facilitator start a second game, which deals a fresh deck but leaves participants behind', async () => {
+    test('lets only the facilitator start a second game, which deals a fresh deck to every seat', async () => {
         const host = facilitator;
         expect(host, 'the shared fixture did not produce a facilitator').toBeDefined();
         if (host === undefined) {
@@ -521,14 +523,15 @@ test.describe.serial('Leaderboard: the end-of-game summary screen', () => {
         await host.page.getByRole('button', { name: startNewGame }).click();
 
         /*
-         * Assert: the facilitator lands back on the game screen with a fresh hand
+         * Assert: the facilitator lands on the game screen with a fresh hand
          * — not in the lobby. `NewGameUseCase` calls `resetToInProgress` and deals
          * in the same breath, so `LOBBY` is never re-entered by any code path and
-         * there is no lobby for a player to be returned to. `App.tsx:191-200` does
-         * route the facilitator through `screen: 'lobby'`, but only transitionally:
-         * `LobbyScreen` observes `IN_PROGRESS` and forwards immediately, the same
-         * path a mid-game page reload takes. The hand is the anchor because the
-         * game screen has no `h1`.
+         * there is no lobby for a player to be returned to. Since EOP-233 the
+         * routing says so: `App.tsx` sends every seat straight to the game screen
+         * on the session `GameOverScreen` observed, where it used to route the
+         * facilitator alone through a transitional `screen: 'lobby'` that
+         * `LobbyScreen` forwarded out of on seeing `IN_PROGRESS`. The hand is the
+         * anchor because the game screen has no `h1`.
          */
         await expect(
             handCards(host.page).first(),
@@ -542,46 +545,37 @@ test.describe.serial('Leaderboard: the end-of-game summary screen', () => {
         const participants = seats.filter(candidate => candidate !== host);
 
         /*
-         * Assert: and every other player is left behind on the finished game's
-         * leaderboard.
+         * Assert: and so does every other seat, with nobody touching their
+         * browser.
          *
-         * THIS PINS A DEFECT, NOT DESIRED BEHAVIOUR — see EOP-233. `GameOverScreen`
-         * is the one screen in the application that opens no session subscription,
-         * so a participant looking at it is never told the session went back to
-         * `IN_PROGRESS`. The server does its part: `NewGameUseCase` publishes
-         * `HAND_DEALT` before the 204 returns, which is what makes this a fair test
-         * rather than a race — the facilitator's own navigation above happens
-         * *after* that 204, so by the time its fresh hand is on screen any
-         * subscriber would already have been told. There is simply no subscriber.
+         * These are the two assertions EOP-233 inverted, and until it was fixed
+         * they read the other way round — a participant left on the finished
+         * game's leaderboard with no hand. `GameOverScreen` was the one screen in
+         * the application that opened no session subscription, so a participant
+         * looking at it was never told the session had gone back to `IN_PROGRESS`,
+         * and sat in front of the results of a game that no longer existed while
+         * the server held a fresh hand it could neither see nor play.
          *
-         * When EOP-233 is fixed these two assertions will fail, and inverting them
-         * to match the facilitator's is the change that closes it.
+         * The server always did its part — `NewGameUseCase` publishes `HAND_DEALT`
+         * before the 204 returns — which is what makes this a fair test rather
+         * than a race: the facilitator's own navigation above happens *after* that
+         * 204, so by the time its fresh hand is on screen every subscriber has
+         * already been told.
+         *
+         * There is no page reload anywhere in this block, deliberately. Reloading
+         * was a stranded participant's only way out before the fix, so asserting
+         * it here would hide any regression behind the very workaround the fix
+         * exists to remove.
          */
         for (const seat of participants) {
-            await expect(
-                seat.page.getByRole('table', { name: 'Final leaderboard' }),
-                `${seat.displayName} was moved on from the old leaderboard — EOP-233 may be fixed, so invert this`,
-            ).toBeVisible();
-            await expect(
-                handCards(seat.page),
-                `${seat.displayName} was shown the second game's hand — EOP-233 may be fixed, so invert this`,
-            ).toHaveCount(0);
-        }
-
-        /*
-         * Assert: and a reload recovers them. This is what holds EOP-233 at medium
-         * rather than a lockout, and it is worth pinning in its own right, because
-         * it is the only route a stranded player currently has: `App.tsx` restores
-         * the seat from `sessionStorage` and the transitional lobby forwards it
-         * onward, so the second game's hand was there all along and only the
-         * notification was missing.
-         */
-        for (const seat of participants) {
-            await seat.page.reload();
             await expect(
                 handCards(seat.page).first(),
-                `${seat.displayName} did not recover the second game's hand by reloading`,
+                `${seat.displayName} was not dealt into the second game without reloading the page`,
             ).toBeVisible({ timeout: 30_000 });
+            await expect(
+                seat.page.getByRole('table', { name: 'Final leaderboard' }),
+                `${seat.displayName} is still showing the finished game's leaderboard`,
+            ).toHaveCount(0);
         }
 
         // Assert: a fresh deal of the whole deck, to the same three seats. A reset

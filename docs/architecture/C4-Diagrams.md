@@ -895,8 +895,9 @@ flowchart TD
         APP["App.tsx<br/>view state machine: home | create | join | lobby | game | game-over<br/>owns the sessionStorage key eop_session<br/>reads VITE_GAME_SCREEN_ENABLED (ADR-037)"]
         HOME["HomeView<br/>lobby entry point — Create / Join buttons always enabled"]
         FORMS["CreateSessionForm / JoinSessionForm<br/>GOV.UK error summary, client-side validation"]
-        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns the SSE reader"]
-        GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop"]
+        LOBBY["LobbyScreen.tsx<br/>roster, join code, start-game<br/>owns an SSE reader"]
+        GAME["GameScreen.tsx<br/>card hand, trick zone, drag-and-drop<br/>owns an SSE reader"]
+        GAMEOVER["GameOverScreen.tsx<br/>final leaderboard, start-new-game<br/>owns an SSE reader (EOP-233)"]
         API["api.ts<br/>typed DTOs + per-DTO runtime parsers (ADR-045)<br/>ApiError(status, message), ContractViolationError(502)<br/>PLAYER_TOKEN_HEADER, relative URLs only"]
     end
 
@@ -908,11 +909,15 @@ flowchart TD
     APP --> FORMS
     APP -->|"passes sessionId, playerId, playerToken"| LOBBY
     APP -->|"passes sessionId, playerId, playerToken"| GAME
+    APP -->|"passes sessionId, playerToken, isFacilitator"| GAMEOVER
 
     FORMS -->|"createSession / joinSession"| API
     LOBBY -->|"getSession / startGame<br/>credentialed via api.ts"| API
     LOBBY -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
     GAME -->|"fetchHand / getTrickState / playCard<br/>credentialed via api.ts"| API
+    GAME -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
+    GAMEOVER -->|"getLeaderboard / getSession / startNewGame<br/>credentialed via api.ts"| API
+    GAMEOVER -.->|"subscribeToSession() in api.ts<br/>fetch-based SSE, AbortController teardown"| CADDY
 
     API -->|"fetch, relative paths"| CADDY
 ```

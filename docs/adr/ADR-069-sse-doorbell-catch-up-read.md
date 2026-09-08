@@ -9,7 +9,7 @@
 
 The real-time mechanism is a bare SSE doorbell (ADR-014, ADR-034). `GET /api/v1/sessions/{id}/events` emits `event:`/`data:` frames that carry no payload the client uses; each frame simply means "session state changed, re-read it". There is no `Last-Event-ID`, no replay, and no history on the server — `SseSessionEventPublisher` publishes to whoever is subscribed at that instant.
 
-The client helper is `subscribeToSession` in `ui/src/api.ts` (it uses `fetch` + `ReadableStream` rather than `EventSource`, because `EventSource` cannot set the custom player-token header — ADR-015). Its two and only call sites are `ui/src/components/LobbyScreen.tsx` and `ui/src/components/GameScreen.tsx`.
+The client helper is `subscribeToSession` in `ui/src/api.ts` (it uses `fetch` + `ReadableStream` rather than `EventSource`, because `EventSource` cannot set the custom player-token header — ADR-015). At the time of this decision it had two and only two call sites, `ui/src/components/LobbyScreen.tsx` and `ui/src/components/GameScreen.tsx`. There is now a third — see the EOP-233 amendment.
 
 ## The Defect
 
@@ -96,7 +96,40 @@ Let `T` be the instant the server registers the subscriber; it necessarily prece
 - [ADR-045](ADR-045-frontend-response-validation.md) — client-side response validation, the other boundary this fix touches
 - [ADR-070](ADR-070-jdbc-connection-leak-via-open-in-view.md) — the separate defect disclosed above, root-caused and fixed under EOP-227
 - `ui/src/api.ts` — the `subscribeToSession` helper
-- `ui/src/components/LobbyScreen.tsx` — one call site
-- `ui/src/components/GameScreen.tsx` — the other call site
+- `ui/src/components/LobbyScreen.tsx` — the first call site
+- `ui/src/components/GameScreen.tsx` — the second
+- `ui/src/components/GameOverScreen.tsx` — the third, added by EOP-233
 - EOP-217 — the E2E run that surfaced the defect
 - EOP-224 — this fix
+- EOP-233 — the third call site, which adopts this decision
+
+## Amendment, 2026-09-08 (EOP-233)
+
+`subscribeToSession` now has **three** call sites, not two. EOP-233 gave `GameOverScreen` the session
+subscription it had never had — it was the one screen in the application that opened none, which is
+why a participant was stranded on the finished game's leaderboard when the facilitator started a
+second game. The Context section above has been corrected to say "at the time of this decision".
+
+**The new call site adopts this decision rather than working around it, and its own reason for needing
+the catch-up read is the sharper case of the two.** `GameOverScreen` passes an `onOpen` callback that
+re-reads the session, exactly as the other two do. The gap this ADR closes is not hypothetical there:
+the facilitator's `POST /new-game` publishes `HAND_DEALT` and then returns its `204`, so a participant
+whose stream registered a moment after that publish would receive no frame for it, ever. Without the
+`onOpen` read it would have reproduced the very defect it was written to fix, in a narrower window.
+
+Be precise about *why* it is the sharper case, because the obvious reason is wrong: none of the three
+screens has a periodic re-read, so that is not the distinction. The distinction is which resource the
+mount read fetches. `LobbyScreen` and `GameScreen` read the session itself on mount, so their `onOpen`
+read is a second look at something they have already seen. `GameOverScreen`'s mount read is
+`getLeaderboard` — a different endpoint answering a different question, and one that returns `409` for
+any session that is not `COMPLETED` rather than reporting the new status. So `onOpen` is the *only*
+session read this screen ever performs other than those the doorbell provokes, and it is the sole
+reason a participant whose subscription lost the race is not stranded exactly as EOP-233 described.
+
+One difference from the two original call sites, recorded because it looks like a divergence and is
+not one. `LobbyScreen` and `GameScreen` do the initial read *before* subscribing, inside an async
+`setup()`. `GameOverScreen` subscribes directly in its effect, because its initial read is a different
+request in a different effect (`getLeaderboard`, not the session read the doorbell provokes), and
+React runs effects in order regardless. The ordering property this ADR turns on — that a frame
+published between the first read and the subscriber registering is recoverable — is supplied by the
+`onOpen` read in all three, not by where the subscribe call sits.
