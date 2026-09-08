@@ -135,6 +135,114 @@ unrelated players. Consistent with the PRD's exclusion of cross-session history.
 
 ## Amendments
 
+**2026-09-08 — a player who loses their token stays locked out, and the lobby
+ghost seat is accepted (EOP-231).**
+
+**What is decided.** The consequence recorded above — *closing the tab loses the
+credential* — stands as designed, and is now a decision rather than an
+acknowledged cost. No recovery path will be added: the token remains the entire
+identity, it remains in tab-scoped `sessionStorage`, and a client that has
+forgotten it cannot prove which seat was its own. Two observable behaviours
+follow, and both are accepted:
+
+*Mid-game, the returning player is refused.*
+`GameSession.java:196` (anchor: `acceptsNewPlayers`) opens
+`join(Player, Instant)` by rejecting any
+status that does not accept new players, so an `IN_PROGRESS` session answers 409
+"This session is no longer in the lobby." The player is out for the rest of the
+game.
+
+*In `LOBBY`, the returning player is given a **new** seat.*
+`GameSession.java:162` (anchor: `nextSeatOrder`) returns the current player
+count, seat order is assigned once and never recomputed (ADR-019), and nothing
+maps a display name back to a seat. Their original seat stays occupied by a
+player nobody holds a token for — a **ghost seat**.
+
+**Why the alternative — moving the token to `localStorage` — was considered and
+rejected.** It is not merely riskier, it is already prohibited: the 2026-08-15
+amendment below records ADR-035 formalising that the token must never live in
+`localStorage`, and the 2026-08-20 (EOP-107) amendment re-examined that choice
+against precisely this XSS exposure and upheld it. Adopting it would reverse two
+ADRs, worsen the exposure `EOP-201` is open about, and break the mechanism this
+ADR's per-tab scoping exists for — three seats in one browser, which is how the
+workshop demo is run. Trading the demo for tab-close recovery is the wrong way
+round: the demo happens every session, a lost tab does not.
+
+**Why the alternative — issuing a short-lived reconnect code at join time — was
+also rejected.** It recurses the problem it solves. The recovery credential is
+another secret held by the same client that has just demonstrated it can lose
+one, and it would be shown once, at the moment a player is least attentive to it.
+It is also a *new low-entropy credential*, which puts it outside the premise of
+the 2026-08-20 (EOP-120) amendment below: that amendment's argument for not
+needing a KDF is scoped to today's 256-bit token, and says in terms that a rejoin
+PIN or a short reconnect code would sit outside it. So this option costs a
+throttle in the style of `InMemoryJoinAttemptLimiter` (ADR-033), a redemption
+endpoint, an expiry, and a second credential to reason about in the threat model
+— for a case whose remedy already exists in one click, below.
+
+**Why the alternative — releasing a seat whose subscriber has been absent beyond
+a threshold — was also rejected, and is the one that would need its own ADR.** It
+requires a way to vacate a seat, which `SessionRepository` deliberately does not
+offer; `JoinSessionUseCase.java:54` (anchor: `MAXIMUM_SEAT_ATTEMPTS`) records
+that adding one "would make that path routine over HTTP", calls it a deliberate
+design change rather than tuning, and notes `JoinSessionUseCaseTest` pins the
+relationship so it cannot happen silently. It also collides with the reconnect
+churn the SSE transport is sized for: `MAX_SUBSCRIBERS_PER_SESSION` is twice the
+table size precisely because subscribers come and go (ADR-034), so a
+subscriber-absence threshold tight enough to reclaim a seat during a lobby would
+evict live players on a transient network drop. Reclaiming a seat is a plausible
+future feature; it is not this decision, and it does not arrive as a threshold
+constant.
+
+**What is accepted instead, and the honest limit of it.** The ghost seat is not
+cosmetic and is not being waved away. It occupies a row, so it counts in both
+directions of the seat arithmetic: towards `MAXIMUM_PLAYERS`, and towards the
+minimum-to-start check at
+`GameSession.java:246` (anchor: `MINIMUM_PLAYERS_TO_START`) — the same rule restated at
+`HandDealer.java:123` and `NewGameUseCase.java:119`, both counting **rows rather
+than live participants**. A lobby can therefore show six occupied seats with five
+people present, and can be started with two humans and one ghost. The worst case
+is a **stalled** game, because turn order walks seat order and a ghost never
+plays.
+
+Three things bound that, and together they are why it is cheaper to accept than
+to fix:
+
+*The stall is pre-existing, not new.* A mid-game tab close produces exactly the
+same stalled table, and that is the behaviour this amendment has just confirmed
+as designed. The ghost seat widens the window in which a stall can be created; it
+does not add a failure mode.
+
+*A ghost seat can only be created before any card is dealt.* It needs a re-join,
+and a re-join needs `LOBBY`, so the damage is always visible before play starts
+rather than discovered mid-trick.
+
+*The remedy is one facilitator action.*
+`EndSessionController.java:76` (anchor: `PostMapping`) exposes
+`POST /api/v1/sessions/{sessionId}/end`, so the
+facilitator ends the session and everyone re-joins a fresh lobby. For a
+co-located, facilitated workshop of at most six people on a call together, that
+is a smaller cost than any of the three options above.
+
+The visibility gap — a facilitator cannot see *which* row is the ghost — is
+mitigated by rendering the server-assigned seat number beside each name in the
+lobby, already filed as `EOP-247` by the EOP-230 amendment below. That is a
+mitigation of the confusion, not of the arithmetic, and is deliberately not
+being reclassified as a fix for this.
+
+**The regression pins.** `e2e/tests/boundary.spec.ts` Scenario 4 asserts the
+mid-game refusal and that the remaining players keep their hands; Scenario 5
+asserts the returning player takes a third seat in a two-person session. Both
+assertions are **unchanged** by this decision — only their comments changed, to
+stop describing a settled decision as pending. Inverting either means amending
+this ADR first.
+
+**What would reopen this.** Any one of: the workshop stops being facilitated, so
+there is no one to end and restart a session; sessions grow long enough that
+restarting costs real work rather than a minute; a seat-vacating operation arrives
+for another reason, at which point option 4 is nearly free; or `EOP-247` ships and
+facilitators still cannot resolve a ghost seat in practice.
+
 **2026-09-08 — duplicate display names are admitted by decision, not by omission
 (EOP-230).**
 

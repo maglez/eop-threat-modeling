@@ -413,9 +413,11 @@ throws `SessionNotJoinableException` → 409 "This session is no longer in the l
 tab mid-game is permanently locked out. In `LOBBY` they can re-join, but `nextSeatOrder()` returns
 `players.size()`, so they consume a **new** seat and leave a ghost player behind.
 
-This is pinned as *observed behaviour*, not endorsed. **EOP-231** owns the decision of whether a
-player who loses their token should be able to return to their seat, and will update both
-scenarios in the same change if it does.
+**EOP-231 has now decided to accept both halves of this.** The decision is recorded in the
+[2026-09-08 amendment to ADR-015](ADR-015-player-identity.md#amendments), which argues moving the
+token to `localStorage`, issuing a short-lived reconnect code, and releasing the seat of an absent
+player, and rejects all three. Scenarios 4 and 5 therefore stand as the deliberate pins, and their
+assertions are unchanged — only their comments stop describing a settled decision as pending.
 
 ### Finding 4 — the minimum-player boundary is unreachable through the UI
 
@@ -484,7 +486,8 @@ EOP-218:
 - **EOP-230** — duplicate display names are admitted. The decision is recorded in the
   [2026-09-08 amendment to ADR-015](ADR-015-player-identity.md#amendments).
 - **EOP-231** — a player who loses their session token cannot return to their seat (covers both
-  the mid-game lockout and the LOBBY ghost seat).
+  the mid-game lockout and the LOBBY ghost seat). The decision is recorded in the
+  [2026-09-08 amendment to ADR-015](ADR-015-player-identity.md#amendments).
 - **EOP-232** — `LobbyScreen.tsx:37` duplicates the minimum-players rule as a hardcoded `3`;
   `e2e/game.ts:31` (anchor: `MINIMUM_PLAYERS_TO_START`) is a legitimate third copy.
 
