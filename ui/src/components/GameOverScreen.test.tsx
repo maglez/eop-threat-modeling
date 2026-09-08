@@ -10,7 +10,9 @@ vi.mock('../api', async (importOriginal) => {
     return {
         ...actual,
         getLeaderboard: vi.fn(),
+        getSession: vi.fn(),
         startNewGame: vi.fn(),
+        subscribeToSession: vi.fn(),
     };
 });
 
@@ -74,6 +76,34 @@ const makeLeaderboard = (): api.LeaderboardDto => ({
     ],
 });
 
+/**
+ * A SessionStateDto in the given status, with the two seats the leaderboard above
+ * reports. Only `status` matters to this screen; the rest is shape.
+ */
+const makeSession = (status: api.SessionStatus): api.SessionStateDto => ({
+    sessionId: SESSION_ID,
+    joinCode: 'ABCD2345',
+    status,
+    players: [
+        {
+            playerId: 'player-1',
+            displayName: 'Alice',
+            seatOrder: 0,
+            role: 'FACILITATOR',
+            connectionStatus: 'CONNECTED',
+        },
+        {
+            playerId: 'player-2',
+            displayName: 'Bob',
+            seatOrder: 1,
+            role: 'PARTICIPANT',
+            connectionStatus: 'CONNECTED',
+        },
+    ],
+    createdAt: '2026-09-08T10:00:00Z',
+    updatedAt: '2026-09-08T10:30:00Z',
+});
+
 const defaultProps = {
     sessionId: SESSION_ID,
     playerToken: PLAYER_TOKEN,
@@ -89,9 +119,17 @@ const defaultProps = {
 describe('GameOverScreen', () => {
     const mockGetLeaderboard = vi.mocked(api.getLeaderboard);
     const mockStartNewGame = vi.mocked(api.startNewGame);
+    const mockGetSession = vi.mocked(api.getSession);
+    const mockSubscribeToSession = vi.mocked(api.subscribeToSession);
 
     beforeEach(() => {
         vi.resetAllMocks();
+        // Since EOP-233 the screen opens a session subscription of its own, so
+        // every test needs a stream that connects and stays quiet, and a session
+        // read that reports the completed game already on screen. A test about
+        // the second game overrides one or both.
+        mockSubscribeToSession.mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+        mockGetSession.mockResolvedValue(makeSession('COMPLETED'));
     });
 
     afterEach(() => {
@@ -477,5 +515,222 @@ describe('GameOverScreen', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    // -------------------------------------------------------------------------
+    // EOP-233 — the session subscription this screen used not to have
+    //
+    //     Game-over was the one screen in the application that opened no
+    //     subscription, so a participant sitting on it was never told the
+    //     facilitator had started a second game: it went on rendering the final
+    //     leaderboard of a game that no longer existed while the server held a
+    //     fresh hand the player could neither see nor play. The tests below are
+    //     written against the doorbell rather than the transport: the stream
+    //     carries no state of its own, so what matters is that every ring
+    //     provokes a session read and that only IN_PROGRESS navigates.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Captures the callbacks the screen hands to `subscribeToSession`, so a test
+     * can ring the doorbell itself. The fields are filled during render, so read
+     * them after it.
+     */
+    const captureSubscription = () => {
+        const captured: {
+            onEvent?: (eventType: string | null) => void;
+            onError?: (err: api.ApiError | Error) => void;
+            onOpen?: (() => void) | undefined;
+            readonly abort: ReturnType<typeof vi.fn>;
+        } = { abort: vi.fn() };
+        mockSubscribeToSession.mockImplementation((_sessionId, _playerToken, onEvent, onError, onOpen) => {
+            captured.onEvent = onEvent;
+            captured.onError = onError;
+            captured.onOpen = onOpen;
+            return { abort: captured.abort } as unknown as AbortController;
+        });
+        return captured;
+    };
+
+    /**
+     * Delivers one stream callback inside `act`, flushing the session read the
+     * screen answers it with. The read is what the assertions are about, so the
+     * microtask flush is not incidental — without it they run a tick too early.
+     */
+    const deliver = async (fire: () => void): Promise<void> => {
+        await act(async () => {
+            fire();
+            await Promise.resolve();
+        });
+    };
+
+    it('moves a participant on to the second game when the doorbell reports IN_PROGRESS', async () => {
+        // Arrange — a participant on the finished game's leaderboard.
+        const onNewGame = vi.fn();
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} isFacilitator={false} onNewGame={onNewGame} />);
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+        expect(onNewGame).not.toHaveBeenCalled();
+
+        // Act — the facilitator starts a second game, so HAND_DEALT rings here.
+        const resumed = makeSession('IN_PROGRESS');
+        mockGetSession.mockResolvedValue(resumed);
+        await deliver(() => subscription.onEvent?.('HAND_DEALT'));
+
+        // Assert — and the observed session travels with the callback, so the
+        // caller can route straight to the game screen without a second read.
+        expect(onNewGame).toHaveBeenCalledTimes(1);
+        expect(onNewGame).toHaveBeenCalledWith(resumed);
+    });
+
+    it('leaves the seat on the leaderboard when the doorbell reports the game is still over', async () => {
+        // Arrange
+        const onNewGame = vi.fn();
+        const onSessionEnd = vi.fn();
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} onNewGame={onNewGame} onSessionEnd={onSessionEnd} />);
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+
+        // Act — a ring that is not a second game. The default session read
+        // installed in beforeEach still reports COMPLETED.
+        await deliver(() => subscription.onEvent?.('SESSION_UPDATED'));
+
+        // Assert — nobody is routed anywhere on a guess, and the leaderboard the
+        // player is reading is still on screen.
+        expect(onNewGame).not.toHaveBeenCalled();
+        expect(onSessionEnd).not.toHaveBeenCalled();
+        expect(screen.getByRole('table', { name: 'Final leaderboard' })).toBeInTheDocument();
+    });
+
+    it('re-reads the session when the stream opens, catching an event published before it subscribed', async () => {
+        // Arrange — the second game began between mount and the subscriber
+        // registering, so no doorbell will ever ring for it (EOP-224).
+        const onNewGame = vi.fn();
+        const resumed = makeSession('IN_PROGRESS');
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        mockGetSession.mockResolvedValue(resumed);
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} onNewGame={onNewGame} />);
+        await waitFor(() => {
+            expect(subscription.onOpen).toBeDefined();
+        });
+
+        // Act
+        await deliver(() => subscription.onOpen?.());
+
+        // Assert
+        expect(onNewGame).toHaveBeenCalledWith(resumed);
+    });
+
+    it('routes once however many times the doorbell rings', async () => {
+        // Arrange
+        const onNewGame = vi.fn();
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        mockGetSession.mockResolvedValue(makeSession('IN_PROGRESS'));
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} onNewGame={onNewGame} />);
+        await waitFor(() => {
+            expect(subscription.onOpen).toBeDefined();
+        });
+
+        // Act — the open re-read plus three further rings. React has not
+        // unmounted this screen yet, so every one of them is delivered.
+        await deliver(() => {
+            subscription.onOpen?.();
+            subscription.onEvent?.('HAND_DEALT');
+            subscription.onEvent?.('TRICK_PLAYED');
+            subscription.onEvent?.('TRICK_PLAYED');
+        });
+
+        // Assert — routing twice would remount the game screen underneath a
+        // player already playing.
+        expect(onNewGame).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the second game and routes the facilitator through the same read as everyone else', async () => {
+        // Arrange
+        const onNewGame = vi.fn();
+        const resumed = makeSession('IN_PROGRESS');
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        mockStartNewGame.mockResolvedValue(undefined);
+        render(<GameOverScreen {...defaultProps} isFacilitator={true} onNewGame={onNewGame} />);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Start new game' })).toBeInTheDocument();
+        });
+        // The 204 means the deal is already done, so the read that follows it
+        // sees IN_PROGRESS.
+        mockGetSession.mockResolvedValue(resumed);
+
+        // Act
+        await userEvent.click(screen.getByRole('button', { name: 'Start new game' }));
+
+        // Assert — the facilitator navigates on the observed session, not on the
+        // bare 204, which is what keeps its path and a participant's identical.
+        await waitFor(() => {
+            expect(onNewGame).toHaveBeenCalledWith(resumed);
+        });
+        expect(mockStartNewGame).toHaveBeenCalledTimes(1);
+    });
+
+    it('ejects the seat when the event stream reports an expired token', async () => {
+        // Arrange
+        const onSessionEnd = vi.fn();
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} onSessionEnd={onSessionEnd} />);
+        await waitFor(() => {
+            expect(subscription.onError).toBeDefined();
+        });
+
+        // Act
+        await deliver(() => subscription.onError?.(new api.ApiError(403, 'Invalid or expired player token')));
+
+        // Assert
+        expect(onSessionEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('tells the reader to reload when the event stream dies without ejecting them', async () => {
+        // Arrange
+        const onSessionEnd = vi.fn();
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        const subscription = captureSubscription();
+        render(<GameOverScreen {...defaultProps} onSessionEnd={onSessionEnd} />);
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+
+        // Act — a transport failure, not a refusal.
+        await deliver(() => subscription.onError?.(new Error('network error')));
+
+        // Assert — a dead doorbell puts this screen back in the position EOP-233
+        // describes, so it says so, and it names the one recovery still open. The
+        // seat keeps its token and its leaderboard.
+        expect(screen.getByTestId('error-summary')).toHaveTextContent(
+            'Lost the live connection to this session. Reload the page if the facilitator starts another game.',
+        );
+        expect(onSessionEnd).not.toHaveBeenCalled();
+        expect(screen.getByRole('table', { name: 'Final leaderboard' })).toBeInTheDocument();
+    });
+
+    it('unsubscribes on unmount', async () => {
+        // Arrange
+        mockGetLeaderboard.mockResolvedValue(makeLeaderboard());
+        const subscription = captureSubscription();
+        const { unmount } = render(<GameOverScreen {...defaultProps} />);
+        await waitFor(() => {
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+
+        // Act
+        unmount();
+
+        // Assert — ADR-034 caps subscribers per session, so a screen that leaked
+        // one on every visit would eventually refuse a legitimate seat.
+        expect(subscription.abort).toHaveBeenCalledTimes(1);
     });
 });

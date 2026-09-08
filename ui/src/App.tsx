@@ -188,9 +188,31 @@ export default function App(): React.JSX.Element {
             sessionId={view.sessionId}
             playerToken={view.playerToken}
             isFacilitator={view.isFacilitator}
-            onNewGame={() => {
-              // Return to lobby so the facilitator can start the re-dealt game
+            onNewGame={(session) => {
+              // A second game is under way — either the 204 from this
+              // facilitator's own click, or this seat's subscription observing
+              // IN_PROGRESS. Route straight to the game screen: NewGameUseCase
+              // resets to IN_PROGRESS and deals in one transaction, so the deal
+              // is already done, and SessionStatus.LOBBY is never re-entered by
+              // any code path. This used to route through the lobby, which
+              // worked only because LobbyScreen forwards on observing
+              // IN_PROGRESS — a transition dressed up as a destination, and one
+              // only the facilitator ever reached (EOP-233).
               const tok = view.playerToken;
+              if (isGameScreenEnabled) {
+                setView({
+                  screen: 'game',
+                  sessionId: view.sessionId,
+                  playerId: view.playerId,
+                  playerToken: tok,
+                  session
+                });
+                return;
+              }
+              // With the game screen off there is nowhere to play, so hold the
+              // seat in the lobby — the same refusal to advance that
+              // onGameStarted makes above, so one flag means one behaviour
+              // whichever screen the player came from.
               setView({
                 screen: 'lobby',
                 sessionId: view.sessionId,

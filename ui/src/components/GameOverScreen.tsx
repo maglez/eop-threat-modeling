@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getLeaderboard,
+  getSession,
   startNewGame,
+  subscribeToSession,
   ApiError,
   type LeaderboardDto,
   type LeaderboardRowDto,
+  type SessionStateDto,
 } from '../api';
 import { ErrorSummary } from './ErrorSummary';
 
@@ -22,7 +25,20 @@ interface GameOverScreenProps {
   readonly sessionId: string;
   readonly playerToken: string;
   readonly isFacilitator: boolean;
-  readonly onNewGame: () => void;
+  /**
+   * Called when this session is playing again, carrying the session as observed
+   * at that moment.
+   *
+   * Every seat arrives here by the same route, and that is the point of the
+   * signature. Before EOP-233 the facilitator navigated off the back of its own
+   * `204` while no other seat navigated at all, so the two paths could diverge —
+   * and did, for as long as this screen opened no subscription. The deal has
+   * already happened by the time this fires (`NewGameUseCase` resets to
+   * `IN_PROGRESS` and deals in one transaction), so the observed session is
+   * everything the caller needs to route straight to the game screen without
+   * passing through a lobby the session never re-enters.
+   */
+  readonly onNewGame: (session: SessionStateDto) => void;
   readonly onSessionEnd: () => void;
 }
 
@@ -79,6 +95,15 @@ export function GameOverScreen({
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [retryAnnouncement, setRetryAnnouncement] = useState('');
   const cooldownWasActive = useRef(false);
+  // Keep a stable ref to onNewGame so it never appears in a useCallback dep list,
+  // which would tear the SSE subscription down and re-create it on every render
+  // and so walk into ADR-034's per-session subscriber cap.
+  const onNewGameRef = useRef(onNewGame);
+  onNewGameRef.current = onNewGame;
+  // Fire onNewGame at most once per mount. The doorbell can ring repeatedly
+  // before React unmounts this screen, and routing twice would remount the game
+  // screen underneath a player who is already playing.
+  const newGameFiredRef = useRef(false);
 
   const loadLeaderboard = useCallback(async (): Promise<boolean> => {
     try {
@@ -103,6 +128,94 @@ export function GameOverScreen({
   useEffect(() => {
     void loadLeaderboard();
   }, [loadLeaderboard]);
+
+  /*
+   * Reads the session and moves every seat on if a second game is under way.
+   *
+   * This is the whole of EOP-233. Game-over was the one screen in the
+   * application that opened no session subscription, so a participant sitting on
+   * it was never told the facilitator had started another game: it rendered the
+   * final leaderboard of a game that no longer existed while the server held a
+   * fresh hand the player could neither see nor play. The server was always
+   * doing its part — `NewGameUseCase` publishes `HAND_DEALT` before the `204`
+   * returns — there was simply no subscriber on this page.
+   *
+   * `IN_PROGRESS` is the only status a second game produces, so it is the only
+   * one that navigates, and the test is positive rather than `!== 'COMPLETED'`:
+   * a status this screen has no view for must leave the player looking at a true
+   * leaderboard rather than routing them somewhere on a guess. `LOBBY` is never
+   * re-entered by any code path (`NewGameUseCase` resets straight to
+   * `IN_PROGRESS`), and the expiry sweep deletes the row in the same transaction
+   * as it writes `ABANDONED`, so that one arrives as the 404 handled below.
+   */
+  const resumeIfPlaying = useCallback(async (): Promise<void> => {
+    try {
+      const session = await getSession(sessionId, playerToken);
+      if (session.status !== 'IN_PROGRESS') return;
+      // Navigate once, however many rings raced. Every ring gets its own read —
+      // dropping one would risk dropping the only ring whose read would have
+      // seen the second game — but only the first read back routes, because
+      // routing twice would remount the game screen underneath a player who is
+      // already playing. The check has to sit after the await: a burst of rings
+      // would all clear a check made before it.
+      if (newGameFiredRef.current) return;
+      newGameFiredRef.current = true;
+      onNewGameRef.current(session);
+    } catch (err) {
+      // Losing access ejects, exactly as the leaderboard read does. Anything
+      // else leaves the screen alone: the leaderboard on it is still a true
+      // record of the game just played, and the doorbell will ring again.
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+        onSessionEnd();
+      }
+    }
+  }, [sessionId, playerToken, onSessionEnd]);
+
+  // Subscribe to session events, so this screen learns of a second game instead
+  // of waiting for the player to guess that reloading would help.
+  useEffect(() => {
+    let abandoned = false;
+
+    // fetch-based SSE, not EventSource — EventSource cannot set custom headers
+    // (ADR-015). The stream is a doorbell carrying no state of its own, so every
+    // ring is a prompt to re-read the session.
+    const subscription = subscribeToSession(
+      sessionId,
+      playerToken,
+      () => {
+        if (!abandoned) {
+          void resumeIfPlaying();
+        }
+      },
+      (err) => {
+        if (abandoned) return;
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          onSessionEnd();
+          return;
+        }
+        // A dead stream puts this screen back in the position EOP-233 describes,
+        // so say so rather than failing silently — the reload named in the
+        // message really is the recovery path, and it is the only one left once
+        // the doorbell is gone. Never clobber an existing message: a leaderboard
+        // that failed to load is the more specific problem and owns the slot.
+        setError((current) => current
+          ?? 'Lost the live connection to this session. Reload the page if the facilitator starts another game.');
+      },
+      () => {
+        // The stream is live. Re-read, because a HAND_DEALT published between
+        // this screen mounting and the subscriber registering was delivered to
+        // nobody and there is no history to replay (EOP-224).
+        if (!abandoned) {
+          void resumeIfPlaying();
+        }
+      },
+    );
+
+    return () => {
+      abandoned = true;
+      subscription.abort();
+    };
+  }, [sessionId, playerToken, resumeIfPlaying, onSessionEnd]);
 
   // Ticks the retry cooldown down once per second, then announces that the
   // button is live again. The countdown is rendered in the button label, which
@@ -168,7 +281,13 @@ export function GameOverScreen({
     setIsStartingNewGame(true);
     try {
       await startNewGame(sessionId, playerToken);
-      onNewGame();
+      // Route on the same path every other seat takes, rather than on the 204
+      // alone. One destination for every seat is what stops the facilitator's
+      // navigation and the participants' from drifting apart again (EOP-233),
+      // and it costs nothing in robustness: if this read fails, this
+      // facilitator's own subscription is still open and the `HAND_DEALT` the
+      // call above published will ring the doorbell.
+      await resumeIfPlaying();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start new game';
       setError(message);
