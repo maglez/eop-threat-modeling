@@ -54,7 +54,11 @@ networks:
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    # Same digest as compose.app.yml's postgres, and audit-containers.sh's mirror
+    # check fails if the two ever disagree -- the E2E stack proving the product
+    # against a different database build than production runs would defeat the
+    # point of the suite. Pinned on the default so ${POSTGRES_IMAGE} still overrides.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73}
     container_name: eop-e2e-postgres
     # `no`, not `unless-stopped`. A test database that resurrects itself after the
     # run has finished is a leak, not resilience. Quoted because YAML would

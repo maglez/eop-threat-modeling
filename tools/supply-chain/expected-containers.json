@@ -37,6 +37,21 @@
     "  note          Why this container exists and what moving its pin costs."
   ],
   "containers": {
+    "grafana/grafana": {
+      "tag": "12.4.0",
+      "digest": "sha256:b0ae311af06228bcfd4a620504b653db80f5b91e94dc3dc2a5b7dab202bcde20",
+      "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm/v7",
+        "linux/arm64"
+      ],
+      "attestations": 0,
+      "occurrences": [
+        "docker-compose.yml"
+      ],
+      "note": "Dashboard for the local performance stack. Was ':latest' until EOP-229 -- and the tag change is the substance, not the digest: the image that tag resolved to matched NO released version tag probed (12.3.0, 12.3.1, 12.3.2, 12.4.0, 12.3, 11.6.0) by amd64 child digest, and grafana/grafana carries no version label, so the stack was running a Grafana nobody could name. Freezing 'latest@sha256:' was not an option either: check 3 rejects a digest beside that tag. Verified behaviourally after the bump: the stack came up on this digest, /api/health reported version 12.4.0, and Grafana accepted this repository's provisioning files -- both datasources inserted and dashboard provisioning finished with no error over the two dashboards in tools/monitoring/grafana/dashboards/. Not verified by rendering a panel: the persisted grafana_data volume predates the configured admin password, so the API returns 401. Cheap to redo, because nothing deploys this."
+    },
     "grafana/k6": {
       "tag": "2.2.0",
       "digest": "sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6",
@@ -50,35 +65,6 @@
         ".github/workflows/ci.yml"
       ],
       "note": "The k6 CLI for the CI performance canary (ADR-055). The tag is 2.2.0 and NOT v2.2.0 -- grafana/k6:v2.2.0 does not exist. The digest is the top-level OCI index digest from 'docker buildx imagetools inspect grafana/k6:2.2.0'; pinning the arm64 child breaks ubuntu-latest with 'no matching manifest for linux/amd64', and 'docker inspect' on a developer Mac reports a third digest again. Both traps are recorded in ADR-055 amendment 2026-08-23."
-    },
-    "sonarqube": {
-      "tag": null,
-      "digest": "sha256:9026624a61cd25542a402a9e7213dd7dbb39724ac9597e331e6b85362558c079",
-      "mediaType": "application/vnd.oci.image.index.v1+json",
-      "platforms": [
-        "linux/amd64",
-        "linux/arm64/v8"
-      ],
-      "attestations": 2,
-      "occurrences": [
-        "compose.sonar.yml"
-      ],
-      "note": "The local SonarQube server both issue ratchets scan against. Tagless on purpose: a tag is a moving target and this pin decides what the committed baselines mean. MOVING THIS PIN IS A BASELINE-INVALIDATING CHANGE, not a version bump -- a SonarQube upgrade ships retuned rules, so tools/sonar/sonar-baseline.json and sonar-ui-baseline.json must be re-derived in the same commit."
-    },
-    "sonarsource/sonar-scanner-cli": {
-      "tag": null,
-      "digest": "sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
-      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-      "platforms": [
-        "linux/amd64"
-      ],
-      "attestations": 0,
-      "occurrences": [
-        "tools/sonar/scan-ui.sh",
-        "tools/sonar/sonar-ui-baseline.json",
-        "tools/sonar/sonar-ui-report.json"
-      ],
-      "note": "The scanner tools/sonar/scan-ui.sh runs over ui/src, since ui/ has no pom.xml. Single-platform amd64, so it runs under emulation on Apple silicon and that scan is slow -- this is the one reference here that is NOT an index, which is why the audit compares mediaType rather than demanding one. Three occurrences: the script that runs it, and the two committed JSONs that record which scanner produced them. Those two are the reason the mirror check exists -- sonar-ratchet-ui's sourceHash covers only ui/package.json, ui/tsconfig.json, ui/vite.config.ts and ui/src/**, so editing scan-ui.sh alone leaves the committed report naming a scanner that no longer ran, with nothing else in the build catching it."
     },
     "grafana/loki": {
       "tag": "3.3.2",
@@ -110,6 +96,21 @@
       ],
       "note": "Promtail log collector for EOP application logs. Used for observability stack in compose.observability.yml."
     },
+    "influxdb": {
+      "tag": "1.8",
+      "digest": "sha256:299ebda2c7e308dbef42e26ac9b8fd1d9b3bcb8a0aee80c6509aa0219c1d0290",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm/v7",
+        "linux/arm64/v8"
+      ],
+      "attestations": 3,
+      "occurrences": [
+        "docker-compose.yml"
+      ],
+      "note": "k6 metrics sink for the LOCAL performance stack; bound to 127.0.0.1:8086 and never deployed, and CI never writes to it (ADR-055 section 5). Pinned by EOP-229. 1.8 is a long-lived maintenance branch that still receives rebuilds, so the tag was never a version. Auth is deliberately off (see docker-compose.yml) which is safe only because of the loopback binding -- do not read this pin as hardening a public service."
+    },
     "mcr.microsoft.com/playwright": {
       "tag": "v1.63.0-noble",
       "digest": "sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27",
@@ -123,6 +124,75 @@
         ".github/workflows/ci.yml"
       ],
       "note": "Carries the three browser builds the end-to-end suite drives, and replaced 'npx playwright install --with-deps' in the e2e job (EOP-236, ADR-073). That command downloaded browsers from Microsoft's CDN with no content verification and apt-get installed their system libraries as root, so this pin removed the highest-privilege unpinned download in the pipeline. Moving it is NOT a version bump: the tag is hard-coupled to the '@playwright/test' version resolved in e2e/package-lock.json, because Playwright refuses to run against browsers built for another release, so both move in the same commit and PlaywrightImagePinTest fails the build if they disagree. attestations 0 is not a finding; Microsoft publishes no buildx provenance for this image, so there is simply less to verify against."
+    },
+    "postgres": {
+      "tag": "17-alpine",
+      "digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "platforms": [
+        "linux/386",
+        "linux/amd64",
+        "linux/arm/v6",
+        "linux/arm/v7",
+        "linux/arm64/v8",
+        "linux/ppc64le",
+        "linux/riscv64",
+        "linux/s390x"
+      ],
+      "attestations": 8,
+      "occurrences": [
+        "compose.app.yml",
+        "compose.e2e.yml",
+        "src/test/java/org/maglez/eop/migration/PostgresTestContainer.java"
+      ],
+      "note": "The database, in BOTH the deployed stack (compose.app.yml, which runs on EC2) and the E2E stack. Pinned by EOP-229; it was the only unpinned image in a stack that reaches a user, which is why that story widened ADR-064's scope rather than treating the E2E gap it was raised for as the whole finding. The two references MUST stay identical -- the mirror check enforces it -- because an E2E suite proving the product against a different database build than production runs would defeat its own purpose. Written as ${POSTGRES_IMAGE:-...} in both files, so the digest sits on the DEFAULT and an operator override still works; that form is also what forced expand_defaults() into the discovery pass. EOP-229's own review round found the pin had gone only half way: the Liquibase integration tests start their own PostgreSQL through Testcontainers, and PostgresTestContainer.java still held the bare tag while claiming in its javadoc to match compose.app.yml. So the suite would have verified the changelog against whatever 17-alpine resolved to that week while the stack deployed a fixed image -- EOP-164's gap in smaller form, and silent. That constant is now pinned to this same digest, which is why a .java file appears in the occurrences above, and PostgresImagePinTest fails ./mvnw verify if the three references or this baseline entry ever disagree."
+    },
+    "sonarqube": {
+      "tag": null,
+      "digest": "sha256:9026624a61cd25542a402a9e7213dd7dbb39724ac9597e331e6b85362558c079",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64/v8"
+      ],
+      "attestations": 2,
+      "occurrences": [
+        "compose.sonar.yml"
+      ],
+      "note": "The local SonarQube server both issue ratchets scan against. Tagless on purpose: a tag is a moving target and this pin decides what the committed baselines mean. MOVING THIS PIN IS A BASELINE-INVALIDATING CHANGE, not a version bump -- a SonarQube upgrade ships retuned rules, so tools/sonar/sonar-baseline.json and sonar-ui-baseline.json must be re-derived in the same commit."
+    },
+    "sonarsource/sonar-scanner-cli": {
+      "tag": null,
+      "digest": "sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "attestations": 0,
+      "occurrences": [
+        "tools/sonar/scan-ui.sh",
+        "tools/sonar/sonar-ui-baseline.json",
+        "tools/sonar/sonar-ui-report.json"
+      ],
+      "note": "The scanner tools/sonar/scan-ui.sh runs over ui/src, since ui/ has no pom.xml. Single-platform amd64, so it runs under emulation on Apple silicon and that scan is slow -- this is the one reference here that is NOT an index, which is why the audit compares mediaType rather than demanding one. Three occurrences: the script that runs it, and the two committed JSONs that record which scanner produced them. Those two are the reason the mirror check exists -- sonar-ratchet-ui's sourceHash covers only ui/package.json, ui/tsconfig.json, ui/vite.config.ts and ui/src/**, so editing scan-ui.sh alone leaves the committed report naming a scanner that no longer ran, with nothing else in the build catching it."
+    }
+  },
+  "unpinned_allowlist": {
+    "eop-threat-modeling": {
+      "reason": "Built from this repository's own Dockerfile ('docker build -t eop-threat-modeling:local .'), so there is no registry digest to pin -- the image does not exist in a registry at all and is rebuilt from the tree on every use. The supply-chain question a digest answers is already answered upstream of it here: what goes into this image is pom.xml, which dependency-cve gates, and the base image in Dockerfile, which is a separate reference the 'containers' roster above is where a pin would be recorded if that base were ever inlined here. Declared rather than skipped by pattern, because an allow-list a reviewer reads is worth more than a rule that quietly exempts anything without a registry host in its name. The built_from path beside this reason is what makes the exemption checkable rather than merely readable: the audit fails if it does not name a tracked file, so a third-party image cannot be moved in here on the strength of a plausible sentence.",
+      "built_from": "Dockerfile",
+      "occurrences": [
+        "compose.app.yml",
+        "compose.e2e.yml"
+      ]
+    },
+    "eop-ui": {
+      "reason": "Built from ui/Dockerfile ('docker build -t eop-ui:local ui'), so there is no registry digest to pin, exactly as for eop-threat-modeling. Note the two tags in the tree are deliberately different builds of the same image name -- ':local' takes ui/Dockerfile's VITE_* defaults, which are all false, while ':e2e' is built with VITE_GAME_SCREEN_ENABLED=true so the E2E suite has a game screen to drive (ADR-037, ADR-068). That difference is why this entry keys on the image name and not on a tag. built_from names ui/Dockerfile for the same reason, and it is checked against the tracked tree.",
+      "built_from": "ui/Dockerfile",
+      "occurrences": [
+        "compose.app.yml",
+        "compose.e2e.yml"
+      ]
     }
   }
 }

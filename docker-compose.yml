@@ -6,7 +6,9 @@ name: eop-monitoring
 
 services:
   influxdb:
-    image: influxdb:1.8
+    # Digest-pinned under ADR-064 as amended by EOP-229. 1.8 is a maintenance branch
+    # that still receives rebuilds, so the tag alone is not a version.
+    image: influxdb:1.8@sha256:299ebda2c7e308dbef42e26ac9b8fd1d9b3bcb8a0aee80c6509aa0219c1d0290
     container_name: eop-influxdb
     ports:
       - "127.0.0.1:8086:8086"
@@ -30,7 +32,14 @@ services:
       retries: 5
 
   grafana:
-    image: grafana/grafana:latest
+    # Was `grafana/grafana:latest` until EOP-229, which is worse than it sounds: the
+    # image that tag resolved to matched no released version tag probed (12.3.0,
+    # 12.3.1, 12.3.2, 12.4.0, 12.3, 11.6.0) by amd64 child digest, and carries no
+    # version label, so the monitoring stack was running a Grafana nobody could name.
+    # Now an explicit release, digest-pinned under ADR-064 as amended by EOP-229.
+    # Note a digest beside `:latest` would not have been a fix -- audit-containers.sh
+    # rejects that shape, because it is a pin whose author was still thinking about a tag.
+    image: grafana/grafana:12.4.0@sha256:b0ae311af06228bcfd4a620504b653db80f5b91e94dc3dc2a5b7dab202bcde20
     container_name: eop-grafana
     ports:
       - "3000:3000"
