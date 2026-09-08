@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<!--
+  E2E CI test report, published to GitHub Pages from the root of the
+  orphan `perf-history` branch (EOP-221).
+
+  This file is TRACKED ON `main` and copied verbatim onto `perf-history` by the
+  `e2e-report` job in .github/workflows/ci.yml. Edit it here, never there -- an
+  edit made directly on the orphan branch is overwritten by the next push to
+  `main`, silently, because the job copies unconditionally.
+
+  Deliberately dependency-free. No CDN, no SRI to keep current, no build step,
+  and nothing to audit. It renders offline from a file:// checkout of the branch,
+  which also makes it testable without Pages.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E2E Test Report &mdash; Elevation of Privilege</title>
+<style>
+  :root { --ink: #0b0c0c; --mute: #505a5f; --line: #b1b4b6; --pass: #00703c; --fail: #d4351c; --flaky: #f47738; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2rem 1.25rem 4rem; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  main { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .5rem; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 .75rem; }
+  p { margin: 0 0 1rem; max-width: 46rem; }
+  .lede { color: var(--mute); }
+  .panel { border: 1px solid var(--line); padding: 1rem; margin: 0 0 1.5rem; }
+  .caveat { border-left: 5px solid var(--mute); padding: .25rem 0 .25rem 1rem; color: var(--mute); }
+  figure { margin: 0; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 1.25rem; margin: .75rem 0 0; padding: 0; list-style: none; font-size: .875rem; }
+  .legend span { display: inline-block; width: .75rem; height: .75rem; margin-right: .375rem; vertical-align: baseline; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  caption { text-align: left; color: var(--mute); padding: 0 0 .5rem; }
+  th, td { text-align: left; padding: .5rem .625rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .status { padding: 1rem; border: 1px solid var(--line); color: var(--mute); }
+  .status[data-kind="error"] { border-color: var(--fail); color: var(--fail); }
+  a { color: var(--pass); }
+</style>
+</head>
+<body>
+<main>
+  <h1>E2E Test Report</h1>
+  <p class="lede">
+    One data point per push to <code>main</code>, recorded by the E2E test suite
+    in GitHub Actions. Newest on the right.
+  </p>
+
+  <div class="panel caveat">
+    <p style="margin:0">
+      These figures represent the outcome of end-to-end tests that drive a real browser
+      against a real application stack. They show whether the UI functions correctly
+      from a user's perspective.
+    </p>
+  </div>
+
+  <div id="status" class="status" role="status">Loading E2E report data&hellip;</div>
+
+  <figure id="chart-wrap" hidden>
+    <svg id="chart" viewBox="0 0 960 380" role="img" aria-labelledby="chart-title chart-desc" preserveAspectRatio="xMidYMid meet">
+      <title id="chart-title">E2E Test Results per Build</title>
+      <desc id="chart-desc">Bar chart of passed, failed and flaky tests across successive pushes to main.</desc>
+    </svg>
+    <ul class="legend">
+      <li><span style="background:var(--pass)"></span>Passed</li>
+      <li><span style="background:var(--fail)"></span>Failed</li>
+      <li><span style="background:var(--flaky)"></span>Flaky</li>
+    </ul>
+    <figcaption class="legend" style="color:var(--mute)">
+      Full data table below. The underlying series is
+      <a href="./e2e-history.jsonl">e2e-history.jsonl</a>.
+    </figcaption>
+  </figure>
+
+  <h2 id="runs-heading" hidden>Recent builds</h2>
+  <table id="runs" hidden>
+    <caption>Most recent 30 builds, newest first.</caption>
+    <thead>
+      <tr>
+        <th scope="col">Date (UTC)</th>
+        <th scope="col">Commit</th>
+        <th scope="col">Run</th>
+        <th scope="col" class="num">Passed</th>
+        <th scope="col" class="num">Failed</th>
+        <th scope="col" class="num">Flaky</th>
+        <th scope="col" class="num">Skipped</th>
+        <th scope="col" class="num">Duration (s)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // Fixed rather than derived from location.*, which would break the moment the
+  // page is opened from a file:// checkout or a custom domain.
+  var REPO = "maglez/eop-threat-modeling";
+  // These are the keys the e2e-report job actually writes into e2e-history.jsonl, and they
+  // are Playwright's own .stats vocabulary rather than words chosen here -- "expected" means
+  // a test that passed, "unexpected" one that failed. The wire names and the words shown to a
+  // reader are deliberately different: the row shape is fixed by Playwright and by EOP-221's
+  // agreed eight-field contract, while a stakeholder reading this page is better served by
+  // "Passed" and "Failed". Renaming either half alone silently empties the page -- the first
+  // version of this file parsed "passed"/"failed" against a job emitting expected/unexpected,
+  // and every row was rejected as malformed while both files looked correct in isolation.
+  var SERIES = ["expected", "unexpected", "flaky"];
+  var COLOUR = { expected: "#00703c", unexpected: "#d4351c", flaky: "#f47738" };
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  var statusEl = document.getElementById("status");
+
+  function fail(message) {
+    statusEl.hidden = false;
+    statusEl.setAttribute("data-kind", "error");
+    statusEl.textContent = message;
+  }
+
+  function el(name, attrs) {
+    var node = document.createElementNS(SVGNS, name);
+    Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    return node;
+  }
+
+  function isFiniteNumber(v) { return typeof v === "number" && isFinite(v); }
+
+  // Everything below is drawn from a file the CI job writes, so it is not
+  // attacker-controlled in the usual sense -- but it is data being turned into
+  // DOM and a URL, so it is validated as if it were. Values are only ever set
+  // via textContent, and a sha is only linked once it matches /^[0-9a-f]{7,40}$/.
+  function isSha(v) { return typeof v === "string" && /^[0-9a-f]{7,40}$/.test(v); }
+  // `run_id` arrives as a string (the workflow writes it quoted), but a number
+  // would be just as valid a JSON encoding of a run id, so accept either and
+  // insist on digits only -- this value is interpolated into a URL.
+  function isRunId(v) {
+    return (typeof v === "string" || typeof v === "number") && /^[0-9]+$/.test(String(v));
+  }
+
+  function parseRow(line) {
+    var row;
+    try { row = JSON.parse(line); } catch (e) { return null; }
+    if (!row || typeof row !== "object" || Array.isArray(row)) { return null; }
+    for (var i = 0; i < SERIES.length; i++) {
+      if (typeof row[SERIES[i]] !== "number") { return null; }
+    }
+    return row;
+  }
+
+  function niceCeil(value) {
+    if (value <= 0) { return 1; }
+    var mag = Math.pow(10, Math.floor(Math.log(value) / Math.LN10));
+    return Math.ceil(value / mag) * mag;
+  }
+
+  function draw(rows) {
+    var svg = document.getElementById("chart");
+    var W = 960, H = 380, padL = 62, padR = 18, padT = 18, padB = 52;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var peak = 0;
+    rows.forEach(function (r) {
+      var total = (r.expected || 0) + (r.unexpected || 0) + (r.flaky || 0);
+      if (total > peak) { peak = total; }
+    });
+    var yMax = niceCeil(peak || 1);
+
+    // A single build would otherwise divide by zero; centre it instead.
+    var xOf = function (i, barWidth) {
+      return rows.length === 1 ? padL + plotW / 2 - barWidth / 2
+                               : padL + (i / (rows.length - 1)) * plotW - barWidth / 2;
+    };
+    
+    var yOf = function (v) { return padT + plotH - (v / yMax) * plotH; };
+
+    var ticks = 5, t;
+    for (t = 0; t <= ticks; t++) {
+      var val = (yMax / ticks) * t;
+      var y = yOf(val);
+      svg.appendChild(el("line", {
+        x1: padL, y1: y, x2: W - padR, y2: y,
+        stroke: t === 0 ? "#0b0c0c" : "#e7e8e9", "stroke-width": 1
+      }));
+      var label = el("text", { x: padL - 10, y: y + 4, "text-anchor": "end", "font-size": 12, fill: "#505a5f" });
+      label.textContent = String(Math.round(val * 100) / 100);
+      svg.appendChild(label);
+    }
+
+    var axisLabel = el("text", {
+      x: padL, y: H - 14, "font-size": 12, fill: "#505a5f"
+    });
+    axisLabel.textContent = "tests \u2014 " + rows.length +
+      (rows.length === 1 ? " build" : " builds") + ", oldest left";
+    svg.appendChild(axisLabel);
+
+    // Draw bars
+    var barWidth = Math.min(20, plotW / Math.max(rows.length, 1) * 0.8);
+    rows.forEach(function (r, i) {
+      var x = xOf(i, barWidth);
+      
+      // Draw stacked bars for passed, failed, flaky
+      var expectedHeight = ((r.expected || 0) / yMax) * plotH;
+      var unexpectedHeight = ((r.unexpected || 0) / yMax) * plotH;
+      var flakyHeight = ((r.flaky || 0) / yMax) * plotH;
+      
+      var expectedY = yOf(r.expected || 0);
+      var unexpectedY = yOf((r.expected || 0) + (r.unexpected || 0));
+      var flakyY = yOf((r.expected || 0) + (r.unexpected || 0) + (r.flaky || 0));
+      
+      // Passed bar (bottom)
+      if (r.expected > 0) {
+        svg.appendChild(el("rect", {
+          x: x, y: expectedY, width: barWidth, height: expectedHeight,
+          fill: COLOUR.expected
+        }));
+      }
+      
+      // Failed bar (middle)
+      if (r.unexpected > 0) {
+        svg.appendChild(el("rect", {
+          x: x, y: unexpectedY, width: barWidth, height: unexpectedHeight,
+          fill: COLOUR.unexpected
+        }));
+      }
+      
+      // Flaky bar (top)
+      if (r.flaky > 0) {
+        svg.appendChild(el("rect", {
+          x: x, y: flakyY, width: barWidth, height: flakyHeight,
+          fill: COLOUR.flaky
+        }));
+      }
+      
+      // Add tooltip
+      var dot = el("rect", { 
+        x: x, y: padT, width: barWidth, height: plotH,
+        fill: "transparent", cursor: "pointer"
+      });
+      var tip = el("title");
+      tip.textContent = 
+        (isSha(r.sha) ? r.sha.slice(0, 7) + " \u2014 " : "") +
+        (typeof r.date === "string" ? r.date + "\n" : "") +
+        "Passed: " + (r.expected || 0) + "\n" +
+        "Failed: " + (r.unexpected || 0) + "\n" +
+        "Flaky: " + (r.flaky || 0);
+      dot.appendChild(tip);
+      svg.appendChild(dot);
+    });
+
+    document.getElementById("chart-wrap").hidden = false;
+  }
+
+  function tableCell(row, text, numeric) {
+    var td = document.createElement("td");
+    if (numeric) { td.className = "num"; }
+    td.textContent = text;
+    row.appendChild(td);
+    return td;
+  }
+
+  function fmt(v, dp) {
+    if (!isFiniteNumber(v)) { return "\u2014"; }
+    var f = Math.pow(10, dp === undefined ? 2 : dp);
+    return String(Math.round(v * f) / f);
+  }
+
+  function fill(rows) {
+    var body = document.querySelector("#runs tbody");
+    rows.slice().reverse().slice(0, 30).forEach(function (r) {
+      var tr = document.createElement("tr");
+      tableCell(tr, typeof r.date === "string" ? r.date : "\u2014", false);
+
+      var shaCell = tableCell(tr, "", false);
+      if (isSha(r.sha)) {
+        var a = document.createElement("a");
+        a.href = "https://github.com/" + REPO + "/commit/" + r.sha;
+        a.rel = "noopener";
+        var code = document.createElement("code");
+        code.textContent = r.sha.slice(0, 7);
+        a.appendChild(code);
+        shaCell.appendChild(a);
+      } else {
+        shaCell.textContent = "\u2014";
+      }
+
+      // The workflow run is the second half of Scenario 2's "identifying commit
+      // SHA and workflow run": the SHA says what was tested, the run says which
+      // execution produced these numbers -- and it is the only route from a
+      // published figure back to the job log that produced it. Guarded the same
+      // way as the SHA, because `run_id` is interpolated into a URL and
+      // `parseRow` deliberately validates only the three numeric SERIES keys.
+      var runCell = tableCell(tr, "", false);
+      if (isRunId(r.run_id)) {
+        var runLink = document.createElement("a");
+        runLink.href = "https://github.com/" + REPO + "/actions/runs/" + r.run_id;
+        runLink.rel = "noopener";
+        runLink.textContent = String(r.run_id);
+        runCell.appendChild(runLink);
+      } else {
+        runCell.textContent = "\u2014";
+      }
+
+      tableCell(tr, fmt(r.expected), true);
+      tableCell(tr, fmt(r.unexpected), true);
+      tableCell(tr, fmt(r.flaky), true);
+      tableCell(tr, fmt(r.skipped), true);
+      tableCell(tr, fmt(r.duration), true);
+      body.appendChild(tr);
+    });
+    document.getElementById("runs-heading").hidden = false;
+    document.getElementById("runs").hidden = false;
+  }
+
+  // Cache-bust so a viewer refreshing after a merge does not read a stale copy
+  // from the Pages CDN.
+  // Deliberately `./`, not `../`. This page is served from the `e2e/`
+  // subdirectory of the `perf-history` branch, and `../` would resolve to the
+  // branch root -- the k6 perf trend page's directory, which this series must
+  // never read from or write to (EOP-221, ADR-074).
+  fetch("./e2e-history.jsonl?t=" + Date.now(), { cache: "no-store" })
+    .then(function (res) {
+      if (!res.ok) { throw new Error("e2e-history.jsonl responded " + res.status); }
+      return res.text();
+    })
+    .then(function (text) {
+      var lines = text.split("\n").filter(function (l) { return l.trim() !== ""; });
+      var total = lines.length;
+      var rows = lines.map(parseRow).filter(function (r) { return r !== null; });
+
+      if (rows.length === 0) {
+        fail(total === 0
+          ? "No builds recorded yet. The series is written on the first push to main after this page was published."
+          : "Found " + total + " line(s) in e2e-history.jsonl but none carried valid test result values.");
+        return;
+      }
+
+      statusEl.hidden = true;
+      if (rows.length < total) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Skipped " + (total - rows.length) +
+          " malformed line(s) of " + total + " in e2e-history.jsonl.";
+      }
+      draw(rows);
+      fill(rows);
+    })
+    .catch(function (err) {
+      fail("Could not load e2e-history.jsonl: " + err.message);
+    });
+})();
+</script>
+</body>
+</html>
