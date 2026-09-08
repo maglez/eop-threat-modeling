@@ -114,9 +114,17 @@ second game. The Context section above has been corrected to say "at the time of
 the catch-up read is the sharper case of the two.** `GameOverScreen` passes an `onOpen` callback that
 re-reads the session, exactly as the other two do. The gap this ADR closes is not hypothetical there:
 the facilitator's `POST /new-game` publishes `HAND_DEALT` and then returns its `204`, so a participant
-whose stream registered a moment after that publish would receive no frame for it, ever — and unlike
-the lobby, the game-over screen has no periodic re-read to fall back on. Without the `onOpen` read it
-would have reproduced the very defect it was written to fix, in a narrower window.
+whose stream registered a moment after that publish would receive no frame for it, ever. Without the
+`onOpen` read it would have reproduced the very defect it was written to fix, in a narrower window.
+
+Be precise about *why* it is the sharper case, because the obvious reason is wrong: none of the three
+screens has a periodic re-read, so that is not the distinction. The distinction is which resource the
+mount read fetches. `LobbyScreen` and `GameScreen` read the session itself on mount, so their `onOpen`
+read is a second look at something they have already seen. `GameOverScreen`'s mount read is
+`getLeaderboard` — a different endpoint answering a different question, and one that returns `409` for
+any session that is not `COMPLETED` rather than reporting the new status. So `onOpen` is the *only*
+session read this screen ever performs other than those the doorbell provokes, and it is the sole
+reason a participant whose subscription lost the race is not stranded exactly as EOP-233 described.
 
 One difference from the two original call sites, recorded because it looks like a divergence and is
 not one. `LobbyScreen` and `GameScreen` do the initial read *before* subscribing, inside an async
