@@ -7,13 +7,13 @@ One workflow, `.github/workflows/ci.yml`, holds every automated check this proje
 | Trigger | When | Notes |
 |---|---|---|
 | `push` | Every commit on `main` | The only event that publishes anything |
-| `pull_request` | Every PR targeting `main` | Publishes nothing; `e2e` and `perf-trend` do not run |
+| `pull_request` | Every PR targeting `main` | Publishes nothing; `e2e`, `perf-trend` and `e2e-report` do not run |
 | `schedule` | Nightly, `0 6 * * *` (06:00 UTC) | Was weekly until EOP-220 needed a nightly E2E cadence ([ADR-072](../adr/ADR-072-e2e-ci-integration.md)) |
 | `workflow_dispatch` | On demand, any branch | No inputs, no branch restriction |
 
 The whole graph runs on the schedule, not just the jobs that need it. That is deliberate: a nightly green on `build`, `ui` and `image` is a canary for breakage arriving from outside the repository — a yanked dependency, a base-image change, a new advisory — and nothing is published, because every publishing step is gated on `github.event_name == 'push'`.
 
-Top-level `permissions` is `contents: read`. Two jobs widen it, and only as far as they must: `image` adds `packages: write` for GHCR, and `perf-trend` takes `contents: write` because it commits to an orphan branch. `permissions` is job-scoped with no per-step granularity, which is why `perf-trend` is a separate job rather than a step inside `image`.
+Top-level `permissions` is `contents: read`. Three jobs widen it, and only as far as they must: `image` adds `packages: write` for GHCR, and `perf-trend` and `e2e-report` each take `contents: write` because each commits to the published `perf-history` branch. `permissions` is job-scoped with no per-step granularity, which is why `perf-trend` is a separate job rather than a step inside `image`, and why `e2e-report` is a separate job rather than a step inside `e2e` — the `e2e` job stays `contents: read`, so the job that runs untrusted browser automation is not the job that can write to the repository.
 
 The repository holds **zero secrets**. Everything above runs on the built-in `GITHUB_TOKEN`.
 
@@ -26,6 +26,7 @@ The repository holds **zero secrets**. Everything above runs on the built-in `GI
 | `image` | `build`, `ui` | Always | Builds `eop-threat-modeling:ci` and `eop-ui:ci`, smoke-tests the composed stack, runs the k6 canary, and on a push publishes both images to GHCR |
 | `e2e` | `image` | Not on `pull_request` | Loads the images `image` built, starts `compose.e2e.yml`, runs the Playwright suite, reports failing scenarios in the run summary |
 | `perf-trend` | `image` | Push to `main` only | Appends one k6 trend point to the orphan `perf-history` branch and republishes the trend page |
+| `e2e-report` | `e2e` | Push to `main` only, and only if `e2e` passed | Appends one row derived from `results.json` to `e2e/e2e-history.jsonl` on the same `perf-history` branch and republishes the run-history page |
 | `sonar-ratchet` | — | Always | `tools/sonar/ratchet.sh` — three Java issue counts against `tools/sonar/sonar-baseline.json` |
 | `sonar-ratchet-ui` | — | Always | `tools/sonar/ratchet-ui.sh` — the same three counts over `ui/src` against `sonar-ui-baseline.json` |
 | `dependency-cve` | — | Always, unconditionally | Trivy over both dependency trees, gating on HIGH and CRITICAL |
@@ -66,9 +67,25 @@ It drives the shipped containers through a real browser — three of them, seria
 
 **Failures reach a human through GitHub's own notification** for a failed workflow run — no email action, no `actions/github-script`, no secret. Alongside it the job writes a `$GITHUB_STEP_SUMMARY` table naming every scenario that did not pass first time (`file:line`, title, browser project, status) and emits `::error::` / `::warning::` annotations so the finding attaches to the commit. It reports identity, never assertion text: a failing matcher prints its received value, and that value can be a live join code ([ADR-071](../adr/ADR-071-e2e-artefact-publication-boundary.md)).
 
-**Artefacts.** `e2e-results` (`results.json` — the only file ADR-071 clears for publication, and EOP-221's input), `e2e-playwright-report` (the HTML report and traces — Actions artifact only, never a published page), `e2e-stack-logs`. `E2eArtefactPublicationBoundaryTest` fails `./mvnw verify` if a workflow step ever names `playwright-report` alongside a Pages publisher.
+**Artefacts.** `e2e-results` (`results.json` — the only file ADR-071 clears for publication, and the `e2e-report` job's sole input), `e2e-playwright-report` (the HTML report and traces — Actions artifact only, never a published page), `e2e-stack-logs`. `E2eArtefactPublicationBoundaryTest` fails `./mvnw verify` if a workflow step ever names `playwright-report` alongside a Pages publisher.
 
 **Two things a green `e2e` does not prove.** Rate limiting works — `compose.e2e.yml` raises both ceilings to `Integer.MAX_VALUE`. And that the run was clean — `retries: 1` under CI turns a first-attempt failure that passes on retry into a *flaky* result, which does not fail the job. The summary reports flaky counts and warns.
+
+## The `e2e-report` job in more detail
+
+It publishes the stakeholder-facing E2E run history to **<https://maglez.github.io/eop-threat-modeling/e2e/>**, appending one row per published run to `e2e/e2e-history.jsonl` and republishing `e2e/index.html` from the tracked `tools/e2e/report-page.html`. See [ADR-074](../adr/ADR-074-e2e-run-history-report-publication-destination.md).
+
+**It publishes `results.json` and nothing else.** The row carries `date`, `sha`, `run_id`, `expected`, `unexpected`, `flaky`, `skipped` and `duration` — counts and identity, never a test title and never assertion text. This is [ADR-071](../adr/ADR-071-e2e-artefact-publication-boundary.md)'s boundary, not a design preference: the Playwright HTML report embeds its whole step tree, and decoding it on a *fully passing* run recovered twelve live join codes. So it consumes the `e2e-results` artefact, not `e2e-playwright-report`, and `E2eArtefactPublicationBoundaryTest` fails the build if any step ever names `playwright-report` alongside a Pages publisher.
+
+**It is not an orphan branch of its own, and `e2e-report` is a job name rather than a branch name.** A repository has exactly one Pages site; this one was already bound to `perf-history` at root, serving the k6 trend page. Pointing Pages at a new branch would have taken that page offline, so the report lives in an `e2e/` subdirectory of the branch already being served. Two measurement populations sharing one branch is not two populations sharing one axis — two files, two pages, no shared series — which is why this does not breach the "never one series" rule in `.opencode/rules/performance-testing.md`.
+
+**Two jobs now write that branch, which makes their retry loops load-bearing rather than defensive.** `perf-trend` and `e2e-report` are in deliberately *different* concurrency groups, so both can run on the same push and race. They are reconciled by each retrying the whole clone-append-push — not by serialising them — and that is safe only because they touch disjoint paths: `perf-trend` owns `ci-history.jsonl`, `index.html` and `.nojekyll` at the root, `e2e-report` owns everything under `e2e/`. The loser of a race replays onto the new tip with nothing to merge. Neither force-pushes.
+
+**Nothing publishes on a failure, a pull request or the nightly schedule.** `needs: [ e2e ]` plus `if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'`. The event test is not redundant with the ref test: `workflow_dispatch` and `schedule` both report `refs/heads/main`. The `success()` term is belt-and-braces — an `if:` naming no status function already inherits the implicit `needs` success requirement — and is written out so the "never publish a failing run" rule is legible where it is enforced. The page therefore always shows the last *passing* state of `main`.
+
+**The page is edited in the repository, never on the branch.** `tools/e2e/report-page.html` is copied over `e2e/index.html` on every publish, unconditionally, exactly as `tools/perf/trend-page.html` is at the root — so an edit made on `perf-history` is silently overwritten by the next push. The series is capped at the most recent 30 rows, pruned in the same commit.
+
+**What a green `e2e-report` does not prove.** That the page renders — nothing in CI loads it — or that Pages served the commit, which is asynchronous and reported outside this workflow. A missing or empty `results.json` is a hard failure rather than a skip, because k6 taught this repository that silence is the failure mode to design against.
 
 ## What gates what, from a contributor's point of view
 
@@ -79,13 +96,14 @@ It drives the shipped containers through a real browser — three of them, seria
 
 ## Deployment
 
-There is no deployment stage. Nothing in this workflow assumes a cloud role, runs infrastructure-as-code, or touches an environment outside the runner; the only artefacts that leave a run are the GHCR images and the two orphan branches. `SETUP.md` and the Blueprint describe the intended continuous-deployment target; this file describes what exists.
+There is no deployment stage. Nothing in this workflow assumes a cloud role, runs infrastructure-as-code, or touches an environment outside the runner; the only artefacts that leave a run are the GHCR images and the single orphan `perf-history` branch, which two jobs write and GitHub Pages serves. `SETUP.md` and the Blueprint describe the intended continuous-deployment target; this file describes what exists.
 
 ## Related
 
 - [ADR-072: The end-to-end suite runs after the merge, not before it](../adr/ADR-072-e2e-ci-integration.md)
 - [ADR-068: End-to-end testing with Playwright](../adr/ADR-068-playwright-e2e-testing.md)
 - [ADR-071: The E2E artefact publication boundary](../adr/ADR-071-e2e-artefact-publication-boundary.md)
+- [ADR-074: The E2E run-history report publishes to a subdirectory of the existing Pages branch](../adr/ADR-074-e2e-run-history-report-publication-destination.md)
 - [ADR-055: k6 performance check in CI](../adr/ADR-055-k6-performance-check-in-ci.md)
 - [ADR-050: CVE scanning as a separate Trivy job](../adr/ADR-050-dependency-cve-scanning.md)
 - [ADR-060: SonarQube issue ratchet](../adr/ADR-060-sonarqube-issue-ratchet.md)
