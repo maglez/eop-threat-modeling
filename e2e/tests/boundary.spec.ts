@@ -36,8 +36,11 @@ import {
  *    for display only, and rejects both.
  *  - **A player who closes their tab mid-game is locked out permanently.** The token is the
  *    entire identity (ADR-015) and it lives in tab-scoped `sessionStorage`, so re-joining is
- *    the only way back and an `IN_PROGRESS` session refuses new players. `EOP-231` decides
- *    whether that should change.
+ *    the only way back and an `IN_PROGRESS` session refuses new players. `EOP-231` decided to
+ *    keep it that way, so Scenarios 4 and 5 pin a deliberate decision rather than merely
+ *    observed behaviour — see the 2026-09-08 amendment to ADR-015, which weighs moving the
+ *    token to `localStorage`, issuing a reconnect code, and releasing the seat of an absent
+ *    player, and rejects all three.
  *  - **Too few players cannot be tested through the UI at all.** `LobbyScreen.tsx:37`
  *    disables the start button below three seats, so the server's 409 is unreachable from a
  *    browser. Scenario 6 asserts the control's state, which is the boundary a user meets;
@@ -242,8 +245,14 @@ test.describe('Boundary: losing a seat', () => {
          * and never recomputed (ADR-019). The observable result is a third player in a
          * two-person session and a ghost seat nobody holds a token for.
          *
-         * This is pinned as observed behaviour, not endorsed. `EOP-231` decides whether it
-         * should change and must update this scenario in the same change.
+         * `EOP-231` decided to accept both halves of this, so the assertions below pin a
+         * deliberate decision rather than merely observed behaviour. The 2026-09-08 amendment
+         * to ADR-015 records why the ghost seat is not reclaimed: `SessionRepository` offers no
+         * way to vacate a seat and that absence is deliberate, as the javadoc on
+         * `JoinSessionUseCase.MAXIMUM_SEAT_ATTEMPTS` states. What is accepted instead is that
+         * the ghost seat counts towards both the capacity and the minimum-to-start arithmetic,
+         * with the facilitator's remedy being `POST /api/v1/sessions/{sessionId}/end` and a
+         * fresh lobby. Inverting these assertions means amending that ADR first.
          */
         const facilitator = await openSeat(browser, 'Alice');
         const leaver = await openSeat(browser, 'Bob');
