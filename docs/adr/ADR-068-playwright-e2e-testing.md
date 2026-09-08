@@ -347,7 +347,7 @@ So a 404 from the leaderboard is a legitimate transient, not a failure. The fron
 it as one, offering a `Retry loading results` control
 (`GameOverScreen.tsx:207`, anchor: `Retry loading results`).
 
-**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:516`, anchor: `expectGameOver`) asserts the `Game over` heading
+**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:636`, anchor: `expectGameOver`) asserts the `Game over` heading
 first, because that heading renders unconditionally, and only then looks for the leaderboard table —
 falling back to the screen's own retry control. The distinction that keeps this honest is that the
 fallback is conditional on the retry control being present: a genuine 500, or a selector that has
@@ -457,7 +457,7 @@ tier adds nothing there.
 
 ### Design decision — `expectJoinRefused` as a sibling, not a flag
 
-`e2e/game.ts:255` (anchor: `expectJoinRefused`) exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
+`e2e/game.ts:376` (anchor: `expectJoinRefused`) exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
 *sibling* of `joinSession` rather than a flag on it. `joinSession` asserts the `Game Lobby`
 heading, and the happy-path suite (EOP-217) depends on it staying strict. `expectJoinRefused`
 returns the rendered message rather than asserting it, so callers can compare two refusals for
@@ -618,3 +618,51 @@ encode EOP-233 — that is what makes them a record of behaviour rather than of 
 
 - **EOP-233** — a participant is stranded on the stale leaderboard when the facilitator starts a
   new game. Filed as a Jira Task (the project has no Bug type), linked `Relates` to EOP-219.
+
+## Amendment, 2026-09-08 (EOP-238)
+
+EOP-238 triaged the first-ever Firefox flake in the E2E suite (CI run 34101389640 on `main` at `37ff946`, the push after PR #393 merged EOP-220). The ticket hypothesised either a test-side race in the seat-loss assertion or a genuine application race in SSE disconnect handling. **Both hypotheses were wrong**, and the triage produced two factual corrections plus a fix.
+
+### Finding A — the trace of the failing attempt does not exist
+
+`e2e/playwright.config.ts` sets `trace: 'on-first-retry'`, which records during the *retry*, not the original attempt. The only `trace.zip` in the retained report belongs to the passing retry (`…-firefox-retry1/`). Attempt 0's retained evidence is three screenshots plus `error-context.md` (an ARIA snapshot), and the server-side Caddy access log from the `e2e-stack-logs` artefact.
+
+### Finding B — the failure was in scenario setup, not seat loss
+
+The failing assertion was at `e2e/tests/boundary.spec.ts:197`, which is `joinSession(stayer, joinCode)` — the third player's (Carol's) join, inside the *shared* `joinSession` helper. It is before `startGame` and long before `leaver.context.close()`, so the seat-loss/SSE-disconnect path was never reached. The error was `expect(getByRole('heading', {name:'Game Lobby', level:1})).toBeVisible()` timing out after 10 s.
+
+### The evidence chain (lost submit)
+
+Cross-referencing the ARIA snapshot against every branch of `ui/src/components/JoinSessionForm.tsx`'s `handleSubmit`:
+- Carol's page loaded fine (`GET /` at 08:43:35.439 in the Caddy log).
+- At failure the join form was still rendered with both controlled inputs holding correct values (`#join-code` an 8-char code, `#display-name` `Carol`).
+- **No** `role="alert"` / GOV.UK error summary anywhere in the snapshot → `validate()` did not fail and no fetch rejection was rendered.
+- The submit button read `Join a session` and was enabled → `isSubmitting === false`, so no request was in flight.
+- The Caddy access log shows **zero** `POST /api/v1/sessions/{code}/players` for Carol across the entire 10.26 s of silence, and the `eop-e2e-app` container logged **nothing** in the window. The server was idle, not slow.
+
+Therefore the form's `onSubmit` never fired even though Playwright reported the click as successful — a **lost click / lost submit**. This is a test-side defect, not an application race; no lower-level failing test is required, and neither ADR-069 nor ADR-070 is touched.
+
+### The Firefox-specific ingredient
+
+Both forms autofocus their first field (`JoinSessionForm.tsx:106`, `CreateSessionForm.tsx:99`). Firefox processes the autofocus candidate at the end of a rendering opportunity and scrolls the element into view when it does, so a late flush can move the page between Playwright's hit-test coordinate computation and the dispatched mouse event, landing the click off the button. That is consistent with every observation and with chromium and webkit passing first time — but it **cannot be proven** from the retained artefacts, because of Finding A. The mechanism is stated as consistent with the evidence, not as a confirmed cause.
+
+### The fix
+
+All in `e2e/game.ts`:
+- `SUBMIT_ATTEMPTS = 3` (`e2e/game.ts:195`, anchor: `SUBMIT_ATTEMPTS`) and `SUBMIT_EFFECT_TIMEOUT_MS = 2_000` (`e2e/game.ts:206`, anchor: `SUBMIT_EFFECT_TIMEOUT_MS`).
+- `expectFormReady(seat, field, formName)` (`e2e/game.ts:223`, anchor: `expectFormReady`) asserts the first field `toBeFocused()` — an observable condition proving Firefox's autofocus flush and its scroll-into-view already happened, closing the window *before* anything is typed. A condition on state, never a longer timeout.
+- `submitUntilHandled(seat, submitName, busyName)` (`e2e/game.ts:246`, anchor: `submitUntilHandled`) clicks, then polls a disjunction of three observable effects — the busy/relabelled button, a `role="alert"` refusal summary, or the `Game Lobby` heading — and re-dispatches the click only while none of them is observed, up to three attempts, then throws with a message naming the condition that failed.
+- `fillJoinForm(seat, joinCode)` (`e2e/game.ts:285`, anchor: `fillJoinForm`) asserts the fields committed their values, asserting the join code's **length** and never its value (ADR-071: a failing matcher prints its received value and a custom message becomes a step title even on success, so either channel would publish the secret; length is also invariant under the field's own uppercasing).
+- All three call sites — `createSession` (`e2e/game.ts:314`), `joinSession` (`e2e/game.ts:342`) and `expectJoinRefused` (`e2e/game.ts:376`) — were rewired onto these helpers, because all three had the identical blind click→assert shape and the same autofocus exposure.
+
+### The safety invariant
+
+Re-dispatching a click is normally dangerous — a second successful submit would double-join. It is safe **only** under the proof the disjunction gives: every branch of `handleSubmit` leaves something on screen, so their joint absence together with an idle, unrelabelled button is positive evidence that `onSubmit` did not fire and therefore that no request was issued. A submit that took effect is never re-clicked. This is the load-bearing invariant, and it is a property of the front-end's four observable states — so a future change to `JoinSessionForm` or `CreateSessionForm` that removes the busy relabelling, or renders a refusal without `role="alert"`, silently weakens the helper. That coupling is what a reviewer must watch.
+
+### What would have proven the Firefox mechanism
+
+`trace: 'on-first-retry'` records during the retry, not the original attempt. Changing it to `trace: 'on-failure'` would have captured the failing attempt's trace, which would have shown whether the click landed on the button element or elsewhere. That change was not made in this story, because the fix works regardless of the mechanism's confirmation — but the next flake triager should know the difference.
+
+### Correction to prior prose
+
+The EOP-217, EOP-218 and EOP-219 amendments describe `joinSession`, `createSession` and `expectJoinRefused` as adequate for their scenarios. They are — they passed — but the shape they shared (click the submit button, then assert the lobby heading) exposed every caller to the lost-click window. The helpers were not wrong for the scenarios that used them; they were incomplete for the browser engine that ran them. This amendment's rewiring makes them complete.
