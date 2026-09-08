@@ -12,14 +12,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.jupiter.api.TestInfo;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * One PostgreSQL 17 container, started once for the whole integration-test JVM.
  *
- * <p>The image is pinned to the same tag {@code compose.app.yml} runs in production
- * ({@code postgres:17-alpine}). Testing against a different minor or a different base image would
- * reintroduce, in smaller form, exactly the gap EOP-164 exists to close: a schema verified on one
- * engine and deployed on another.
+ * <p>The image is pinned by digest to the exact image {@code compose.app.yml} runs in production
+ * ({@code postgres:17-alpine}, resolved to a specific manifest — see {@link #IMAGE}). Testing
+ * against a different minor, a different base image, or merely a different <em>build</em> of the same
+ * tag would reintroduce, in smaller form, exactly the gap EOP-164 exists to close: a schema verified
+ * on one engine and deployed on another.
  *
  * <p>Deliberately a static singleton rather than a JUnit {@code @Container} field.
  * {@code @Testcontainers} plus {@code @Container static} starts and stops one container per test
@@ -53,9 +55,27 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 final class PostgresTestContainer {
 
     /**
-     * Pinned to match the {@code POSTGRES_IMAGE} default in {@code compose.app.yml}.
+     * Pinned by digest to the exact image the {@code POSTGRES_IMAGE} default names in
+     * {@code compose.app.yml} and {@code compose.e2e.yml}.
+     *
+     * <p>The digest, not merely the tag, is the point. Until EOP-229 this constant read
+     * {@code postgres:17-alpine} and claimed parity with {@code compose.app.yml}, which was true
+     * only for as long as both resolved the same mutable tag to the same image. Once EOP-229 pinned
+     * the two compose references by digest the claim became false, and the failure it opened is the
+     * quiet kind: {@code 17-alpine} is rebuilt upstream, these tests verify the changelog against
+     * whatever the registry serves that week, and the stack deploys something else. That is EOP-164's
+     * gap — a schema verified on one engine and deployed on another — reintroduced in smaller form by
+     * a pin that only went half way.
+     *
+     * <p>{@code PostgresImagePinTest} holds this string against both compose files and against
+     * {@code tools/supply-chain/expected-containers.json}, so moving the pin means moving all four
+     * together in one reviewed commit. Derive a replacement digest with
+     * {@code docker buildx imagetools inspect} — never {@code docker inspect}, which reports the
+     * host platform's child digest on a developer machine instead of the index digest CI resolves
+     * (ADR-055).
      */
-    private static final String IMAGE = "postgres:17-alpine";
+    private static final String IMAGE =
+            "postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73";
 
     private static final PostgreSQLContainer CONTAINER = startSingleton();
 
@@ -76,8 +96,23 @@ final class PostgresTestContainer {
         throw new AssertionError("Static holder; not instantiable.");
     }
 
+    /**
+     * Starts the one shared container.
+     *
+     * <p>{@code asCompatibleSubstituteFor} is required rather than decorative, and the reason is worth
+     * keeping: Testcontainers refuses a digest-pinned reference outright, because a digest is opaque —
+     * it cannot infer from {@code postgres@sha256:...} that the image behind it speaks PostgreSQL, so it
+     * declines to guess and asks the caller to assert it. The assertion is safe here only because
+     * {@code PostgresImagePinTest} holds this digest equal to the one both Compose stacks run and to the
+     * reviewed entry in {@code tools/supply-chain/expected-containers.json}, and
+     * {@code tools/supply-chain/audit-containers.sh} confirms against the registry that the digest still
+     * resolves and still carries {@code linux/amd64}. Without those, this call would be a bare promise.
+     *
+     * @return the started container
+     */
     private static PostgreSQLContainer startSingleton() {
-        final PostgreSQLContainer container = new PostgreSQLContainer(IMAGE);
+        final PostgreSQLContainer container =
+                new PostgreSQLContainer(DockerImageName.parse(IMAGE).asCompatibleSubstituteFor("postgres"));
         container.start();
         return container;
     }

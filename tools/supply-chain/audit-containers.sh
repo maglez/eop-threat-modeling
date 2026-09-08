@@ -33,6 +33,19 @@
 #   3. PIN FORM. sha256 plus 64 hex, and the tag beside it -- if there is one -- is not "latest".
 #      A digest beside :latest is not wrong, but it is a pin whose author was thinking about a tag.
 #
+#   3b. PIN COVERAGE over every compose file, and this one is a POLICY rather than a tripwire: it
+#      decides that a reference is wrong from the reference itself and consults the baseline only
+#      for the exemptions, so a bare tag fails on its FIRST commit instead of merely being
+#      recorded. Checks 1 to 3 cannot see an image that was never pinned -- discovery skips a file
+#      with no "@sha256:" in it -- which is how postgres:17-alpine sat floating in the DEPLOYED
+#      stack, unwatched, while three CI-only containers were audited to the attestation count.
+#      EOP-229 closed that and widened ADR-064's scope to every stack. An image genuinely unable to
+#      carry a registry digest (the two built from this repository) is declared in the baseline's
+#      unpinned_allowlist with a reason AND a built_from path this script checks against the tracked
+#      tree, so the exemption's premise is proved rather than asserted. Compared bidirectionally, so
+#      pinning one later forces its exemption to be deleted. Same shape as audit-actions.sh's form
+#      check (ADR-073), deliberately.
+#
 #   4. REGISTRY SHAPE, over the network. The digest must still resolve, and its mediaType, platform
 #      list and attestation count must match the baseline. For an image CI runs, linux/amd64 must
 #      be reachable at that digest -- this is the ADR-055 trap that cost a red build once: pinning
@@ -55,12 +68,16 @@
 # argument for keeping dependency-cve narrow applies unchanged -- two allowlists to keep in step,
 # and the first divergence is silent.
 #
-# It also covers containers only. The GitHub Actions in .github/workflows/ are still floating major
-# tags and the whole Maven plugin layer is still unwatched; both were considered and deferred in
-# ADR-064, which records why.
+# It also covers containers only, and only where a container is declared in a compose file or
+# invoked from a tracked script. The GitHub Actions layer is no longer the gap this line used to
+# name -- ADR-073 brought every "uses:" in .github/workflows/ under audit-actions.sh, with a form
+# check that fails a bare tag outright, which is the instrument check 3b above is modelled on. The
+# whole Maven plugin layer IS still unwatched: fifteen bound plugins and thirty-one under
+# pluginManagement, most of their versions arriving from the Spring Boot parent, which ADR-064 named
+# as the largest genuinely uncovered surface in the repository and deferred to its own decision.
 #
 # Usage: tools/supply-chain/audit-containers.sh
-# Exit:  0 = clean, 1 = drift or a malformed pin, 2 = could not run.
+# Exit:  0 = clean, 1 = drift, a malformed pin or an unpinned image, 2 = could not run.
 
 set -euo pipefail
 
@@ -131,6 +148,32 @@ REF = re.compile(
     rb"@(sha256:[0-9a-f]{64})"
 )
 
+# A reference is written directly in most files, but a compose file writes it as a shell-style
+# default: "image: ${POSTGRES_IMAGE:-postgres:17-alpine@sha256:...}". REF cannot read that, and the
+# way it fails is the one failure mode this audit is built to avoid (EOP-229). The "${VAR:-" prefix
+# ends in a hyphen, which the negative lookbehind excludes, so a match cannot begin at the image
+# name. What happens next depends on the reference:
+#
+#   ${POSTGRES_IMAGE:-postgres:17-alpine@sha256:...}   parses as image "17-alpine"  -- a WRONG NAME
+#   ${SCANNER_IMAGE:-sonarsource/sonar-scanner-cli@sha256:...}   does NOT MATCH AT ALL -- a SILENT MISS
+#
+# The wrong name is survivable: the roster check fails loudly on an image nobody declared. The
+# silent miss is not -- a tagless reference offers no later colon for the regex to restart at, so
+# the pin is invisible and the run goes green. A variable-width lookbehind alternative would be the
+# natural fix and Python's re module forbids one, so the substitution is expanded to its default
+# BEFORE matching instead. That is also exactly the reading the unpinned-image policy check below
+# needs -- pinning the default is what leaves ${VAR} overridable -- so the two share one function.
+#
+# ${VAR} and ${VAR:?msg} are deliberately NOT expanded: neither carries a default, so there is no
+# reference here to audit. The policy check treats such a line as a finding rather than skipping it.
+SUBST = re.compile(rb"\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)\}")
+
+
+def expand_defaults(blob):
+    """Rewrite ${VAR:-default} to default so a reference inside one is readable."""
+    return SUBST.sub(rb"\1", blob)
+
+
 # The parse is the one part of this audit that can fail SILENTLY -- every other check compares two
 # things and says so when they differ, but a reference the regex does not see is a pin the audit
 # never mentions. So the readings are pinned here as a table and asserted on every run, before any
@@ -147,12 +190,19 @@ REF_CASES = (
     (b"  registry.example.com:5000/ns/img:v1@" + _D,     "registry.example.com:5000/ns/img", "v1"),
     (b"  localhost:5000/img@" + _D,                      "localhost:5000/img",            None),
     (b"  a/b/c/d@" + _D,                                 "a/b/c/d",                       None),
+    # Compose's ${VAR:-default} form. All three were broken before EOP-229: the first two parsed
+    # as "17-alpine" and "12.4.0", the third did not match at all. See expand_defaults above.
+    (b"    image: ${POSTGRES_IMAGE:-postgres:17-alpine@" + _D + b"}", "postgres",          "17-alpine"),
+    (b"    image: ${GRAFANA_IMAGE:-grafana/grafana:12.4.0@" + _D + b"}", "grafana/grafana", "12.4.0"),
+    (b'IMG="${SCANNER_IMAGE:-sonarsource/sonar-scanner-cli@' + _D + b'}"', "sonarsource/sonar-scanner-cli", None),
+    # ${VAR} and ${VAR:?msg} carry no default, so there is no reference to read.
+    (b"    image: ${APP_IMAGE}",                          None,                            None),
     # A bare child-platform digest, as compose.sonar.yml and ADR-055 quote them: not a reference.
     (b"  #   linux/arm64 -> " + _D,                      None,                            None),
 )
 _self_test_failures = []
 for _blob, _want_image, _want_tag in REF_CASES:
-    _m = REF.search(_blob)
+    _m = REF.search(expand_defaults(_blob))
     _got_image = _m.group(1).decode() if _m else None
     _got_tag = _m.group(2).decode() if (_m and _m.group(2)) else None
     if (_got_image, _got_tag) != (_want_image, _want_tag):
@@ -189,7 +239,7 @@ for raw in paths:
         continue
     if b"@sha256:" not in blob:
         continue
-    for m in REF.finditer(blob):
+    for m in REF.finditer(expand_defaults(blob)):
         image = m.group(1).decode()
         tag = m.group(2).decode() if m.group(2) else None
         digest = m.group(3).decode()
@@ -335,6 +385,286 @@ if failures:
     sys.exit(1)
 
 print("  no drift against the baseline")
+PY
+
+# ---------------------------------------------------------------------------------------------
+echo ""
+echo "=== Every compose image: line is digest-pinned or declared (POLICY) ==="
+
+# This is the one check here that does not consult the baseline to decide whether something is
+# WRONG -- it decides that from the reference itself, and consults the baseline only for the
+# exemptions. That inversion is the point. Every check above is a TRIPWIRE: it records what a pin
+# resolved to and tells you when the record and the tree disagree, which means an image that was
+# NEVER pinned is invisible to it. The discovery pass skips any file with no "@sha256:" in it at
+# all, so before EOP-229 compose.app.yml, compose.e2e.yml and docker-compose.yml were not read by
+# this script in any sense -- and postgres:17-alpine was floating in the DEPLOYED stack, unwatched,
+# while three CI-only containers were audited to the platform and attestation count.
+#
+# So this check fails on a bare tag on its FIRST commit rather than merely being recorded, which is
+# what makes the container layer a policy and not just a tripwire. It is deliberately the same shape
+# as audit-actions.sh's form check (ADR-073): a "uses:" written as a bare tag fails there for the
+# same reason, and the two now agree about what pinning means.
+#
+# The exemption list is bidirectional like everything else here. An unpinned image with no entry
+# fails; an entry that no longer matches any unpinned reference ALSO fails, so pinning an image
+# later forces its exemption to be deleted rather than left behind as a standing licence.
+python3 - "$baseline" "$workdir" <<'PY'
+import json
+import re
+import sys
+
+baseline_path, workdir = sys.argv[1], sys.argv[2]
+
+# A compose file by name, matching the two conventions in the tree: the historical
+# docker-compose.yml and the compose.<stack>.yml family.
+COMPOSE = re.compile(r"^(?:.*/)?(?:docker-)?compose(?:\.[A-Za-z0-9_-]+)*\.ya?ml$")
+
+# An "image:" mapping. Anchored at the key so a commented-out line and an unrelated key such as
+# imagePullPolicy cannot match. A "#" cannot appear inside an image reference, so stripping a
+# trailing comment is safe rather than a guess.
+IMAGE_LINE = re.compile(r"^\s*image:\s*(.+?)\s*(?:#.*)?$")
+
+# The same normalisation the discovery pass uses, for the same reason: the reference that actually
+# runs when nobody sets the variable is the default inside ${VAR:-default}. Pinning THAT leaves the
+# operator override intact, which is why every compose reference here is written in this form.
+SUBST = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)\}")
+
+DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+
+
+def effective_ref(line):
+    """The image reference a compose line resolves to, or None if the line is not an image."""
+    m = IMAGE_LINE.match(line)
+    if not m:
+        return None
+    captured = m.group(1).strip()
+    ref = captured
+    if len(ref) >= 2 and ref[0] == ref[-1] and ref[0] in "\"'":
+        ref = ref[1:-1].strip()
+    # Falling back to the captured text rather than None is load-bearing. An "image:" line whose
+    # value resolves to nothing -- an empty default (${VAR:-}) or an empty string ("") -- is still
+    # an image line, and returning None would drop it from the policy entirely. That is the one
+    # outcome a TOTAL policy cannot allow: every image line must end up either digest-pinned or
+    # declared, and "unreadable" has to fall on the reportable side of that line, never the
+    # exempt side. So the unresolved text is returned and reported as unpinned.
+    return SUBST.sub(r"\1", ref) or captured or None
+
+
+def image_name(ref):
+    """The name part of a reference: no digest, no tag, registry host and port preserved."""
+    # An unresolved substitution is not a name, and splitting one on its last ":" mangles it --
+    # "${APP_IMAGE:?must be set}" would yield "${APP_IMAGE". Return it whole so the finding quotes
+    # what the file actually says. ${VAR:-default} never reaches here; SUBST expanded it already.
+    if "${" in ref:
+        return ref
+    ref = ref.split("@", 1)[0]
+    head, sep, tail = ref.rpartition(":")
+    if sep and "/" not in tail:
+        return head
+    return ref
+
+
+# Check 0 again, for this parser. The reasoning is the header's: a discovery rule that matches
+# nothing passes green, and this one decides whether a line is subject to the policy at all. A
+# regex that silently stopped matching "image:" would turn a gate into a no-op with no output
+# change. Every case below is a line that exists in this tree or a near miss that must not match.
+_D = "@sha256:" + "0" * 64
+LINE_CASES = [
+    ("    image: postgres:17-alpine", "postgres:17-alpine"),
+    ("    image: ${POSTGRES_IMAGE:-postgres:17-alpine" + _D + "}", "postgres:17-alpine" + _D),
+    ("    image: ${UI_IMAGE:-eop-ui:e2e}", "eop-ui:e2e"),
+    ("      image: \"influxdb:1.8\"", "influxdb:1.8"),
+    ("      image: 'influxdb:1.8'", "influxdb:1.8"),
+    ("    image: grafana/grafana:12.4.0" + _D + "   # trailing comment", "grafana/grafana:12.4.0" + _D),
+    # No default, so nothing can be read out of it -- a finding, never a skip. None exist today.
+    ("    image: ${APP_IMAGE}", "${APP_IMAGE}"),
+    ("    image: ${APP_IMAGE:?must be set}", "${APP_IMAGE:?must be set}"),
+    # Resolves to nothing. Must still be READ as an image line so the policy can report it: dropping
+    # it would exempt it, and an exemption nobody declared is the failure this check exists to stop.
+    ("    image: ${APP_IMAGE:-}", "${APP_IMAGE:-}"),
+    ("    image: \"\"", "\"\""),
+    # Near misses that must NOT be read as image lines.
+    ("    imagePullPolicy: Always", None),
+    ("    # image: postgres:17-alpine", None),
+    ("    build: ./ui", None),
+]
+NAME_CASES = [
+    ("postgres:17-alpine" + _D, "postgres"),
+    ("grafana/grafana:12.4.0", "grafana/grafana"),
+    ("sonarqube" + _D, "sonarqube"),
+    ("eop-threat-modeling:local", "eop-threat-modeling"),
+    # A registry host carrying a port must not be mistaken for a tag -- the trap EOP-159 found in
+    # the reference regex above, restated here because this parser splits on ":" independently.
+    ("registry.example.com:5000/team/app", "registry.example.com:5000/team/app"),
+    ("registry.example.com:5000/team/app:1.2.3", "registry.example.com:5000/team/app"),
+    ("localhost:5000/img", "localhost:5000/img"),
+    # An unresolved substitution is returned whole rather than split into nonsense.
+    ("${APP_IMAGE}", "${APP_IMAGE}"),
+    ("${APP_IMAGE:?must be set}", "${APP_IMAGE:?must be set}"),
+]
+_self = []
+for _line, _want in LINE_CASES:
+    _got = effective_ref(_line)
+    if _got != _want:
+        _self.append(f"effective_ref({_line!r}) returned {_got!r}, expected {_want!r}")
+for _ref, _want in NAME_CASES:
+    _got = image_name(_ref)
+    if _got != _want:
+        _self.append(f"image_name({_ref!r}) returned {_got!r}, expected {_want!r}")
+if _self:
+    print("=== FATAL: this check's own parser is wrong ===")
+    for _f in _self:
+        print(f"  - {_f}")
+    print("  Every finding below this point is derived from these two functions, so a parser that")
+    print("  misreads a line makes the whole policy silently permissive. Fix the parser, or fix")
+    print("  the case if the case is what is wrong -- never delete a case to get a green run.")
+    sys.exit(1)
+
+with open(baseline_path, encoding="utf-8") as fh:
+    doc = json.load(fh)
+
+if "unpinned_allowlist" not in doc:
+    print(f"FATAL: {baseline_path} has no 'unpinned_allowlist' key. It is where an image that")
+    print("       genuinely cannot carry a registry digest is declared with its reason. An")
+    print("       absent key is not an empty one: it means this baseline predates the policy")
+    print("       check, and passing by default is the one outcome that must not happen.")
+    sys.exit(2)
+allowlist = doc["unpinned_allowlist"]
+
+with open(f"{workdir}/tracked.z", "rb") as fh:
+    tracked = [p.decode("utf-8") for p in fh.read().split(b"\0") if p]
+
+# Every path git tracks, so an exemption's built_from claim can be checked against the tree rather
+# than believed. Reading it from git rather than from the filesystem is deliberate: an untracked
+# Dockerfile is not part of the repository and must not be able to justify an exemption in it.
+tracked_paths = set(tracked)
+
+compose_files = sorted(p for p in tracked if COMPOSE.match(p))
+
+# Anti-vacuity floors, as a backstop to the parser self-test rather than the main instrument. The
+# self-test proves the parsers read a line correctly; these prove they were pointed at the tree.
+# Both are lower bounds, so adding a stack or a service never trips them -- only losing one does,
+# and that is worth a deliberate, reviewed edit. Same idiom as MINIMUM_SEQUENCE_DIAGRAMS.
+MINIMUM_COMPOSE_FILES = 5
+MINIMUM_IMAGE_LINES = 11
+
+pinned, unpinned = [], {}
+image_line_count = 0
+for path in compose_files:
+    with open(path, encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, start=1):
+            ref = effective_ref(line.rstrip("\n"))
+            if ref is None:
+                continue
+            image_line_count += 1
+            if DIGEST.search(ref):
+                pinned.append((path, lineno, ref))
+            else:
+                unpinned.setdefault(image_name(ref), []).append((path, lineno, ref))
+
+print(f"  {len(compose_files)} compose file(s), {image_line_count} image: line(s)")
+for path in compose_files:
+    print(f"    {path}")
+
+failures = []
+if len(compose_files) < MINIMUM_COMPOSE_FILES:
+    failures.append(
+        f"found {len(compose_files)} compose file(s), expected at least "
+        f"{MINIMUM_COMPOSE_FILES}. A policy that examines nothing passes green, so this floor "
+        f"fails instead. If a stack was deliberately removed, lower the floor in the same commit."
+    )
+if image_line_count < MINIMUM_IMAGE_LINES:
+    failures.append(
+        f"found {image_line_count} image: line(s), expected at least {MINIMUM_IMAGE_LINES}. "
+        f"Either a service was removed -- lower the floor in the same commit -- or the line "
+        f"parser has stopped matching a form it used to read."
+    )
+
+for name in sorted(unpinned):
+    sites = unpinned[name]
+    where = ", ".join(f"{p}:{n}" for p, n, _ in sites)
+    if name not in allowlist:
+        failures.append(
+            f"{name} is used without a digest at {where}. A tag is a mutable pointer: the image "
+            f"that ran yesterday and the image that runs today can differ with no change to this "
+            f"repository. Pin it as name:tag@sha256:<64 hex>, add its entry to the 'containers' "
+            f"baseline in the same commit, and derive the digest with 'docker buildx imagetools "
+            f"inspect' -- never 'docker inspect', which reports a different digest on a "
+            f"developer machine (ADR-055). If the image is built from this repository and has no "
+            f"registry digest to pin, declare it in 'unpinned_allowlist' with a reason and a "
+            f"'built_from' naming the tracked Dockerfile that builds it."
+        )
+        continue
+    entry = allowlist[name]
+    missing = {"reason", "built_from", "occurrences"} - set(entry)
+    surplus = set(entry) - {"reason", "built_from", "occurrences"}
+    if missing:
+        failures.append(
+            f"unpinned_allowlist entry {name} is missing {sorted(missing)}. All three fields are "
+            f"mandatory: an exemption with no reason is indistinguishable from an oversight."
+        )
+    if surplus:
+        failures.append(
+            f"unpinned_allowlist entry {name} carries unexpected field(s) {sorted(surplus)}. A "
+            f"misspelled field must fail rather than read as a harmless extra."
+        )
+    if "reason" in entry and not str(entry["reason"]).strip():
+        failures.append(
+            f"unpinned_allowlist entry {name} has an empty reason. The reason is the whole "
+            f"content of the exemption."
+        )
+    # built_from is what stops this allowlist being a general-purpose bypass, and it is the ONE
+    # field here a reviewer cannot be talked out of. The exemption's whole premise is "this image
+    # is built from this repository, so no registry digest exists to pin" -- a claim prose can
+    # assert and a path can PROVE. A third-party image has no Dockerfile here to name, so moving
+    # one in now takes committing a Dockerfile that builds it, which is a visible act rather than
+    # a plausible sentence. Raised in EOP-229's security review, which found the reason field
+    # alone left an attacker with commit access a cheaper route than unpinning an image outright.
+    if "built_from" in entry:
+        declared = str(entry["built_from"]).strip()
+        if not declared:
+            failures.append(
+                f"unpinned_allowlist entry {name} has an empty built_from. It must name the "
+                f"tracked Dockerfile that builds this image."
+            )
+        elif declared not in tracked_paths:
+            failures.append(
+                f"unpinned_allowlist entry {name} claims to be built from {declared!r}, which is "
+                f"not a tracked file. The exemption rests entirely on the image being built here "
+                f"rather than pulled, so that claim is checked and not merely read. If the image "
+                f"comes from a registry it must be pinned by digest, not exempted."
+            )
+
+    if "occurrences" in entry:
+        actual = sorted({p for p, _, _ in sites})
+        if sorted(entry["occurrences"]) != actual:
+            failures.append(
+                f"unpinned_allowlist entry {name} lists occurrences "
+                f"{sorted(entry['occurrences'])} but is used unpinned in {actual}. Keeping this "
+                f"exact means a new unpinned use of an already-exempt image still surfaces here "
+                f"instead of inheriting the exemption silently."
+            )
+
+for name in sorted(set(allowlist) - set(unpinned)):
+    failures.append(
+        f"unpinned_allowlist entry {name} matches no unpinned reference. If it was pinned, "
+        f"DELETE the entry in the same commit -- a stale exemption is a standing licence to "
+        f"unpin it again with nothing to notice. If it was removed, delete the entry too."
+    )
+
+if failures:
+    print("=== POLICY VIOLATION ===")
+    for f in failures:
+        print(f"  - {f}")
+    sys.exit(1)
+
+for path, lineno, ref in pinned:
+    print(f"  pinned    {path}:{lineno}  {image_name(ref)}")
+for name in sorted(unpinned):
+    sites = unpinned[name]
+    where = ", ".join(f"{p}:{n}" for p, n, _ in sites)
+    print(f"  declared  {where}  {name} -- {allowlist[name]['reason']}")
+print("  every image: line is either digest-pinned or declared with a reason")
 PY
 
 # ---------------------------------------------------------------------------------------------

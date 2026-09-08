@@ -39,7 +39,14 @@ networks:
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    # Digest-pinned under ADR-064 as amended by EOP-229. The digest is pinned on the
+    # *default*, so ${POSTGRES_IMAGE} still overrides it -- an operator who needs a
+    # different build says so explicitly instead of inheriting whatever `17-alpine`
+    # points at this week. tools/supply-chain/audit-containers.sh now fails on any
+    # compose image: line that is not digest-pinned, so removing this digest is a
+    # build failure rather than a silent regression. Moving it means re-deriving the
+    # baseline entry in the same commit.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73}
     container_name: eop-postgres
     restart: unless-stopped
     environment:
