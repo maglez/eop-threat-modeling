@@ -30,9 +30,10 @@ import {
  *  - **The table holds six, so the *seventh* join is refused** — not the fourth.
  *    `GameSession.MAXIMUM_PLAYERS` is 6.
  *  - **Duplicate display names are admitted, not rejected.** No uniqueness check exists
- *    anywhere in the domain or the use cases. Scenario 2 pins that as observed behaviour
- *    rather than asserting a rule the code does not implement; `EOP-230` decides whether it
- *    should, and will update this scenario in the same change if it does.
+ *    anywhere in the domain or the use cases. `EOP-230` decided to keep it that way, so
+ *    Scenario 2 pins a deliberate decision rather than merely observed behaviour — see the
+ *    2026-09-08 amendment to ADR-015, which weighs rejecting a collision and disambiguating
+ *    for display only, and rejects both.
  *  - **A player who closes their tab mid-game is locked out permanently.** The token is the
  *    entire identity (ADR-015) and it lives in tab-scoped `sessionStorage`, so re-joining is
  *    the only way back and an `IN_PROGRESS` session refuses new players. `EOP-231` decides
@@ -132,7 +133,9 @@ test.describe('Boundary: joining a session', () => {
         /*
          * Written to fail loudly if uniqueness is ever introduced without revisiting it:
          * the assertion is that the duplicate *is* seated, so adding a rule breaks this test
-         * rather than leaving a stale one passing. `EOP-230` owns that decision.
+         * rather than leaving a stale one passing. `EOP-230` decided to admit the duplicate,
+         * recorded in the 2026-09-08 amendment to ADR-015, so inverting this assertion means
+         * amending that ADR first.
          */
         const facilitator = await openSeat(browser, 'Alice');
         const impostor = await openSeat(browser, 'Alice');
