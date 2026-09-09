@@ -1,7 +1,7 @@
 # OpenCode Autonomous Engineering System — Executive Summary
 
 > **Source document:** `OpenCode_Autonomous_Engineering_System_Blueprint.md`
-> **Last reviewed:** 2026-09-04
+> **Last reviewed:** 2026-09-09
 > **Audience:** Business stakeholders
 
 ---
@@ -54,6 +54,7 @@ Every story delivered by this system passes through a mandatory quality pipeline
 |---|---|---|
 | **Unit tests** | Every function and business rule in isolation — sub-second, no external dependencies | On every code change |
 | **API integration tests** | Every endpoint behaves correctly end-to-end | On every code change |
+| **End-to-end tests** | 15 Playwright scenarios across 4 spec files (smoke, happy path, boundary, leaderboard) — a real browser driving the real application | On every deployment (CI, after the image is built) |
 | **Performance tests** | Response times and error rates under realistic load (p95 < 200ms) | Nightly and on every deployment |
 
 Code coverage is enforced: at least **80% of instructions** and **70% of branches** must be tested. A story cannot be marked done if coverage drops below these thresholds.
@@ -197,35 +198,38 @@ This system delivers software with the discipline of a senior engineering team, 
 
 ## Some Metrics
 
-*Measured 2026-09-04 on `main` at commit `7498e15`, with a clean working tree.*
+*Measured 2026-09-09 against the tree recorded by the commit that carries this refresh. File and line counts come from `git ls-files` over tracked files; SonarQube figures come from the committed scan reports under `tools/sonar/`, not from a live query.*
 
 ### Codebase size
 
 | Scope | Files | Total lines | Non-blank |
 |---|---|---|---|
-| Java — production (`src/main/java`) | 167 | 18,212 | 16,718 |
-| Java — tests (`src/test/java`) | 139 | 38,025 | 33,021 |
-| Front end — production (`ui/src`) | 17 | 3,786 | 3,420 |
-| Front end — tests (`ui/src`) | 11 | 4,182 | 3,524 |
-| Load-test scripts (`test/k6`) | 3 | 87 | 78 |
-| **Total including tests** | **337** | **64,292** | **56,761** |
-| **Total excluding tests** | **184** | **21,998** | **20,138** |
+| Java — production (`src/main/java`) | 169 | 18,509 | 16,996 |
+| Java — tests (`src/test/java`) | 154 | 42,764 | 37,267 |
+| Front end — production (`ui/src`) | 16 | 3,750 | 3,407 |
+| Front end — tests (`ui/src`) | 11 | 4,606 | 3,889 |
+| End-to-end tests (`e2e/`) | 9 | 2,318 | 2,131 |
+| Load-test scripts (`test/k6`) | 4 | 181 | 166 |
+| **Total including tests** | **363** | **72,128** | **63,856** |
+| **Total excluding tests** | **185** | **22,259** | **20,403** |
 
-Test code accounts for **66%** of the codebase — a **1.92:1** test-to-production ratio. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside both totals.
+Test code accounts for **69%** of all lines measured here — 49,869 lines against 22,259 of production code, a ratio of **2.24:1**. On the Java side alone the ratio is **2.31:1** (42,764 test lines against 18,509), from 154 test files against 169 production, or 48% of the Java file count. A further 3,078 lines of configuration (12 Liquibase changelogs plus Spring profile and test-resource files) sit outside these totals.
 
-The front-end rows count every `.ts`, `.tsx` and `.css` file under `ui/src`, split by the `*.test.*` filename convention — so the 11 test files here are the same 11 Vitest files counted below, while the 227-line stylesheet and the 41-line Vitest setup harness fall under production. The figures carried before the earlier 2026-09-03 refresh (16 files, 3,752 lines) could not be reproduced by any counting rule, so they were replaced rather than adjusted; the extension filter is necessary because `ui/src` also holds the tracked card images. The *excluding tests* row covers Java and front-end production code only, since the k6 scripts are themselves tests.
+The Java rows are a direct count of tracked `.java` files, 169 under `src/main/java` and 154 under `src/test/java`. Their sum, 323, is one short of the 324 `sourceFileCount` recorded in `tools/sonar/sonar-report.json`, because that report is a committed snapshot from the last `tools/sonar/scan.sh` run rather than a live figure — and note the report records only the combined total, never the MAIN/TEST split, so any per-scope reconciliation against it is an inference it cannot support. The front-end rows count `.ts` and `.tsx` under `ui/src`, split by the `*.test.*` filename convention, so the 11 test files here are the same 11 Vitest files counted below. The `e2e/` row is 4 Playwright spec files (`smoke.spec.ts`, `happy-path.spec.ts`, `boundary.spec.ts`, `leaderboard.spec.ts`) plus 5 helper and configuration modules (`game.ts`, `stack.ts`, `global-setup.ts`, `global-teardown.ts`, `playwright.config.ts`) — it is new to this table, because the end-to-end suite did not exist at the 2026-09-04 refresh. The k6 row grew from 3 to 4 with the addition of `card-catalogue.js`.
 
 ### Documentation
 
 | Metric | Count |
 |---|---|
-| Markdown documents under `docs/` | 71 (19,415 lines) |
-| All tracked Markdown documents | 115 |
-| Architecture Decision Records | 61 |
+| Markdown documents under `docs/` | 82 |
+| All tracked Markdown documents | 127 |
+| Architecture Decision Records | 72 |
 | Mermaid diagrams (under `docs/`) | 22, across 6 files |
 | Mermaid diagrams (repository-wide) | 23, across 7 files |
 | Reference PDFs | 4 |
-| Total tracked files | 732 |
+| Total tracked files | 788 |
+
+There are 72 ADR *files*, and the highest ADR *number* is 074 — the two differ because `ADR-001` and `ADR-058` were never written, and a count row must report files. The thirteen decisions numbered ADR-062 through ADR-074 were all taken across the September 2026 sprint, covering the front-end SonarQube project, pinned-container audit coverage, the Playwright end-to-end suite and the GitHub Actions supply-chain baseline. Markdown under `docs/` grew from 71 to 82 over the same period, most of that growth being ADRs, since each is one file.
 
 The two Mermaid rows are lower than the figures carried here on 2026-09-02 (23 across 7, and 26 across 10). They are a direct count of ```` ```mermaid ```` fences in tracked Markdown, so the earlier numbers were either measured by a looser method or have since gone stale; the count above is the reproducible one.
 
@@ -233,12 +237,15 @@ The two Mermaid rows are lower than the figures carried here on 2026-09-02 (23 a
 
 | Metric | Count |
 |---|---|
-| Java unit tests executed | 1,416 |
+| Java unit tests executed | 1,495 |
 | Java integration tests executed (Testcontainers, PostgreSQL 17) | 13 |
 | Front-end tests executed (Vitest, 11 files) | 261 |
-| **Total automated tests** | **1,690** |
+| End-to-end tests (Playwright, Chromium, 4 spec files) | 15 |
+| **Total automated tests** | **1,784** |
 
-All 1,690 pass with zero failures, errors or skips. JaCoCo analysed 150 classes and every coverage threshold was met. The two Java rows are carried forward from the 2026-09-03 refresh rather than re-run: nothing under `src/main/java` or `src/test/java` changed between that commit and this one, confirmed by recomputing the Java freshness hash over the current tree. The front-end row was re-run.
+All 1,784 pass with zero failures, errors or skips. The Java unit count grew from 1,416 to 1,495 across the September sprint.
+
+**The end-to-end row is new to this table.** Fifteen scenarios across four spec files — 1 smoke, 4 happy path, 6 boundary, 4 leaderboard — drive a real Chromium browser against the real application, with `@playwright/test` pinned to 1.63.0 and the browser supplied by a digest-pinned container image. They do not run as part of `./mvnw verify`: they are a dedicated CI job that starts after the application image is built, so the suite exercises the artefact that would actually be deployed rather than a test harness. Results are published to GitHub Pages at `https://maglez.github.io/eop-threat-modeling/e2e/` after every push to `main`, recording pass, fail **and flaky** counts per scenario — a test that fails and then passes on retry is reported as flaky rather than silently counted as green, so the suite cannot hide intermittent failure behind a retry.
 
 ### Static analysis (SonarQube)
 
@@ -252,12 +259,12 @@ Each table carries two columns, because the answer differs depending on what you
 |---|---|---|
 | Security | **A** — 0 issues | **A** — 0 issues |
 | Reliability | **C** — 8 issues (4 medium, 4 low) | **C** — 1 issue (medium) |
-| Maintainability | **A** — 227 issues (4 high, 144 medium, 79 low) | **A** — 26 issues (4 high, 5 medium, 17 low) |
+| Maintainability | **A** — 238 issues | **A** — 26 issues |
 | Security hotspots | **A** — 0 hotspots to review | **A** — 0 hotspots to review |
 | Coverage | 95.3% (97.2% line, 89.3% branch) | 95.3% — the same figure; see below |
 | Duplications | **0.0% — no duplicated lines at all** | 0.0% — none |
 | Maintainability debt | 18.5 hours estimated remediation, 0.5% debt ratio | 2.0 hours estimated remediation |
-| Lines of code analysed | 7,350 across 168 files | — |
+| Lines of code analysed | 7,436 across 168 files | — |
 
 #### Front end — TypeScript (`eop-threat-modeling-ui`)
 
@@ -265,12 +272,12 @@ Each table carries two columns, because the answer differs depending on what you
 |---|---|---|
 | Security | **A** — 0 issues | **A** — 0 issues |
 | Reliability | **B** — 6 issues (all low) | **B** — the same 6 issues; all sit in production |
-| Maintainability | **A** — 26 issues (2 high, 12 medium, 12 low) | **A** — 21 issues (2 high, 9 medium, 10 low) |
+| Maintainability | **A** — 26 issues | **A** — 21 issues |
 | Security hotspots | **A** — 0 hotspots to review | **A** — 0 hotspots to review |
 | Coverage | 90.8% (91.4% line, 88.3% branch) | 90.8% — the same figure; see below |
 | Duplications | 1.9% — 72 lines in 4 blocks | 1.9% — the same 72 lines; see below |
 | Maintainability debt | 1.9 hours estimated remediation, 0.1% debt ratio | 1.6 hours estimated remediation |
-| Lines of code analysed | 2,810 across 16 files | — |
+| Lines of code analysed | 2,880 across 16 files | — |
 
 Both quality gates are **passing**. Two clarifications about the letters, because the scale does not apply uniformly:
 
@@ -279,8 +286,8 @@ Both quality gates are **passing**. Two clarifications about the letters, becaus
 
 Reliability is the one metric not at A in either project, and for different reasons — SonarQube rates on the *worst* finding rather than on a count, so a single finding sets the letter.
 
-- **Back end (C).** The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — and one medium finding caps production reliability at C on its own. No production reliability finding is worse than medium, and every high-severity finding in the project is a maintainability one. All four are `java:S1192` (a string literal duplicated enough times to warrant a constant), at `TrickPlayRepositoryAdapter.java:835`, `GlobalExceptionHandler.java:791`, `GlobalExceptionHandler.java:792` and `ScoreNotDerivableException.java:58`. The seven remaining reliability findings are in test code: three regex-backtracking warnings and four assertion-precision ones. Two successive stories have now reduced the maintainability counts and neither touched reliability: the `java:S3516` blocker reported here before 2026-09-03 was fixed by EOP-187, and EOP-190 then removed four more findings on 2026-09-04 — three `java:S107` "too many parameters" and, as a side effect of the same extraction, one `java:S3776` cognitive-complexity finding. An earlier revision of this section described those `java:S107` findings as the high-severity ones; that was wrong. SonarQube rates `java:S107` medium, two of them remain in production code, and the high-severity count did not move.
-- **Front end (B).** All six reliability findings are **low** severity, which is what holds the letter at B rather than C: six `typescript:S7781` (`GameScreen.tsx` ×4, `FollowSuitHint.tsx`, `GameOverScreen.tsx`). All six sit in production code, and all six are *also* counted as maintainability findings — so the front-end rows overlap rather than add: 21 distinct production issues, not 27. This is three fewer than the previous revision reported, because the three `typescript:S6772` findings (`App.tsx`, `LobbyScreen.tsx` ×2) listed here were fixed by EOP-191 and no longer exist. The two high-severity findings are both maintainability and both in the same file: `typescript:S3776` at `GameScreen.tsx:378` and `typescript:S3735` at `GameScreen.tsx:703`.
+- **Back end (C).** The single production finding is a `java:S6218` at `TrustedProxies.java:131` — a value class holding an array whose `equals` compares references rather than contents — and one medium finding caps production reliability at C on its own. No production reliability finding is worse than medium, and every high-severity finding in the project is a maintainability one. The 26 production maintainability findings break down as `java:S1710` ×15 (a repeatable annotation used singly where the container form reads more clearly), `java:S1192` ×4 (a string literal duplicated enough times to warrant a constant), `java:S2629` ×5 (a log message concatenated at the call site rather than parameterised) and `java:S107` ×2 (too many parameters). The seven remaining reliability findings are in test code: three regex-backtracking warnings and four assertion-precision ones. Three successive stories have now reduced the production maintainability count and none touched reliability: the `java:S3516` blocker reported here before 2026-09-03 was fixed by EOP-187, EOP-190 then removed three `java:S107` findings and, as a side effect of the same extraction, the one `java:S3776` cognitive-complexity finding. Both of the findings an earlier revision called high-severity are therefore gone. Note that `java:S107` is rated medium, not high, and two instances remain.
+- **Front end (B).** All six reliability findings are **low** severity, which is what holds the letter at B rather than C: six `typescript:S7781` (`GameScreen.tsx` ×4, `FollowSuitHint.tsx`, `GameOverScreen.tsx`). All six sit in production code, and all six are *also* counted as maintainability findings — so the front-end rows overlap rather than add: 21 distinct production issues, not 27. The 21 break down as those six `typescript:S7781`, plus `typescript:S3358` ×6 (a nested ternary), `typescript:S6819` ×3 (a `div` where a semantic element or ARIA role belongs), `typescript:S3863` ×2 (a duplicated import), `typescript:S7741` ×2 (both in the Vitest setup harness), `typescript:S3776` ×1 (cognitive complexity, `GameScreen.tsx:378`) and `typescript:S3735` ×1 (`GameScreen.tsx:703`). The three `typescript:S6772` findings (`App.tsx`, `LobbyScreen.tsx` ×2) listed in revisions before 2026-09-04 were fixed by EOP-191 and no longer exist.
 
 Neither project carries a single security issue, and neither carries an unreviewed hotspot.
 
@@ -288,11 +295,13 @@ How to read the last three rows in each table. **Coverage is identical in both c
 
 Two measurement notes on those debt figures, because an earlier revision of this section mixed two SonarQube taxonomies and the numbers did not reconcile. Every figure above is read from the **software-quality** taxonomy (`software_quality_maintainability_remediation_effort`), in both columns and in both projects. The earlier back-end pair — 19.5 hours whole-project against 2.1 hours production — took the total from the legacy `sqale_index` and the production figure from the issues API, so the two could not be added or subtracted meaningfully. On one taxonomy they reconcile exactly: 119 minutes of production debt plus 988 minutes in test code is the 1,107 minutes reported whole-project, and 94 plus 17 minutes is the front end's 111. The **lines-of-code row now reports SonarQube's own file count** — 168 for the back end, 16 for the front end — where earlier revisions gave 307 and 30. Those larger numbers are the file counts in the two freshness tokens, which deliberately cover more than the analysed set: the back end's spans `pom.xml` and `src/test/java` as well, and the front end's spans the tests and the stylesheet. Both are correct counts of different things, and conflating them overstated the analysed surface.
 
-Both committed reports were confirmed **fresh** for this refresh by recomputing their hashes against the current tree, and every server-only figure in both tables — the letter ratings, the severity splits, duplications, hotspot counts and debt — was re-measured by querying the running SonarQube instance directly (`/api/measures/component`, and `/api/issues/search` with `scopes=MAIN` and `scopes=TEST` for the two columns). Nothing in either table is carried forward. No letter rating changed in either project, but the front-end counts fell: EOP-191 and EOP-192 removed five maintainability findings and three reliability ones, which is why that table moved while the back end's did not.
+Both committed reports were confirmed **fresh** for this refresh by recomputing their hashes against the current tree. **The method changed for this revision, and the figures should be read accordingly:** the counts, coverage, ncloc and file counts above are read from the two committed evidence files (`tools/sonar/sonar-report.json`, generated 2026-09-08, and `tools/sonar/sonar-ui-report.json`, generated 2026-09-08), not by querying a running SonarQube instance as the 2026-09-04 refresh did. That is why the severity splits that earlier revisions gave per rating — "4 high, 144 medium, 79 low" and the like — are absent from the tables now: the committed reports record counts and rule keys but not the severity histogram, and inventing one would have been worse than omitting it. The letter ratings, duplications, hotspot counts and debt figures are carried forward from 2026-09-04 for the same reason. Every gated integer — the three per project that the CI ratchets compare — was verified directly against the committed baselines: Java 1 reliability / 26 maintainability / 0 security, front end 6 / 21 / 0, both unchanged and both passing.
 
 One asymmetry between the two projects is worth stating plainly, because it is intentional rather than an oversight: **front-end coverage is measured and reported but never gated.** JaCoCo enforces floors on the Java side (80% instruction, 70% branch); there is no equivalent limit on the front end, so a change halving the 90.8% would pass provided it introduced no new issue.
 
-The two committed evidence files were regenerated at different commits — the back end's at `74d914c`, the front end's after EOP-192 — and both remain fresh for the tree as it stands, because the two freshness tokens are deliberately disjoint: the back end's covers `pom.xml` and the Java sources, the front end's covers `ui/package.json`, `ui/tsconfig.json`, `ui/vite.config.ts` and the TypeScript under `ui/src`. A change to one language therefore never invalidates the other's report.
+**Neither table covers the end-to-end suite.** `e2e/` is outside both SonarQube projects' analysis scope by construction — the Java scanner's sources are `src/main/java` and `src/test/java`, the front-end scanner's are `ui/src` — so the 15 Playwright scenarios contribute nothing to either set of counts and neither ratchet can be reddened or greened by a change to them. End-to-end quality is held instead by the `@tester-unit-and-quality` sign-off gate and by a strict TypeScript typecheck (`tsc --noEmit`) run in `e2e/` on every change. That is a deliberately weaker instrument than a ratchet, and worth knowing when reading a green pair of ratchet jobs.
+
+The two committed evidence files were regenerated at different times — the back end's on 2026-09-08 at 09:18 UTC, the front end's the same day at 19:45 — and both remain fresh for the tree as it stands, because the two freshness tokens are deliberately disjoint: the back end's covers `pom.xml` and the Java sources, the front end's covers `ui/package.json`, `ui/tsconfig.json`, `ui/vite.config.ts` and the TypeScript under `ui/src`. A change to one language therefore never invalidates the other's report — and a change to `e2e/`, which is in neither token, invalidates neither.
 
 These figures come from a local SonarQube server (26.8.0) and are the only numbers in this section that cannot be reproduced offline. The two committed evidence files — `tools/sonar/sonar-report.json` and `tools/sonar/sonar-ui-report.json` — carry the issue counts, coverage and lines of code, but not the letter ratings, the duplication figures, the hotspot count or the debt estimate; those exist only on the server. Refreshing these tables therefore means running `tools/sonar/scan.sh` (back end, via the Maven scanner) and `tools/sonar/scan-ui.sh` (front end, via a digest-pinned `sonar-scanner-cli` container) against a running instance.
 
@@ -364,21 +373,22 @@ The same audit verifies supply-chain provenance: **210 of 210 packages have veri
 |---|---|
 | Java unit tests (`./mvnw test`) | 38.5 s |
 | Front end (`vitest run`) | 3.2 s |
-| **Full quality gate (`./mvnw clean verify`)** | **1 min 14 s** |
+| **Full quality gate (`./mvnw clean verify`)** | **59 s** |
 
 The `verify` figure is the one that matters, because it is what every commit must pass: it runs the unit tests, the PostgreSQL integration tests, Checkstyle, SpotBugs, JaCoCo coverage thresholds, Javadoc and dependency enforcement in a single pass.
 
-Only the front-end figure was re-measured for this refresh, and it more than halved — 6.4 s to 3.2 s — which is a property of the machine and its warm caches rather than of the suite, since the suite grew by two tests over the same period. Read these as orders of magnitude, not as a trend line. The two Java durations are carried forward: the Java tree is byte-identical to the commit they were measured at, and this refresh was explicitly scoped to exclude running the quality gate.
+That figure improved from 1 min 14 s to 59 s between the 2026-09-04 refresh and this one, measured on the EOP-246 delivery run. Almost certainly a warmer Testcontainers image cache rather than anything about the code, since the suite grew by 79 tests over the same period. Read all three durations as orders of magnitude, not as a trend line; the two component figures are carried forward.
+
+**The end-to-end suite is deliberately absent from this table.** It does not run inside `./mvnw verify` — it is a separate CI job that starts only after the application image has been built, so its duration depends on browser startup and container pull as much as on the 15 scenarios themselves, and it varies too much between a warm and a cold runner to be worth quoting here. The CI job's own timing is the authoritative measurement.
 
 ### Delivery volume
 
 | Metric | Count |
 |---|---|
-| Jira tickets delivered or planned | 177 tickets (carried forward from 2026-08-25 — see note) |
-| Highest issue key referenced in git history | `EOP-192` |
-| Distinct issue keys referenced in commit subjects | 102 |
-| Commits on the current branch | 646 |
+| Highest issue key referenced in git history | `EOP-246` |
+| Distinct issue keys referenced in commit subjects | 143 |
+| Commits on the current branch | 793 |
 
 The project does not use story-point estimation; throughput is tracked by ticket count, consistent with trunk-based delivery of one small story at a time.
 
-Only the last three figures were re-measured on 2026-09-04: they come from the repository itself and can be reproduced offline. The ticket total could not be, because the Jira board was again unreachable when this section was refreshed, so it remains the 2026-08-25 figure carried forward and should be read as a floor rather than a current count — the highest key in the history is already `EOP-192`. The distinct-key figure is much lower than the ticket total for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
+The highest key in the git history moved from `EOP-192` to `EOP-246` between the 2026-09-04 refresh and this one — 54 keys of movement. The three figures above are counted from git and are exact for the commit that carries this refresh; a total for the Jira board itself is deliberately not stated, because the board was not queried and the highest key in git is not a ticket count. The distinct-key figure is much lower than the highest key for two expected reasons: a ticket that is planned but not yet started leaves no trace in git at all, and a story delivered as a single squashed commit contributes one subject line however many commits preceded it.
