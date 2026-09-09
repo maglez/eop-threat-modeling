@@ -347,7 +347,7 @@ So a 404 from the leaderboard is a legitimate transient, not a failure. The fron
 it as one, offering a `Retry loading results` control
 (`GameOverScreen.tsx:326`, anchor: `Retry loading results`).
 
-**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:636`, anchor: `expectGameOver`) asserts the `Game over` heading
+**Consequence for the suite:** `expectGameOver` (`e2e/game.ts:656`, anchor: `expectGameOver`) asserts the `Game over` heading
 first, because that heading renders unconditionally, and only then looks for the leaderboard table —
 falling back to the screen's own retry control. The distinction that keeps this honest is that the
 fallback is conditional on the retry control being present: a genuine 500, or a selector that has
@@ -461,7 +461,7 @@ tier adds nothing there.
 
 ### Design decision — `expectJoinRefused` as a sibling, not a flag
 
-`e2e/game.ts:376` (anchor: `expectJoinRefused`) exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
+`e2e/game.ts:396` (anchor: `expectJoinRefused`) exports `expectJoinRefused(seat, joinCode): Promise<string>` as a deliberate
 *sibling* of `joinSession` rather than a flag on it. `joinSession` asserts the `Game Lobby`
 heading, and the happy-path suite (EOP-217) depends on it staying strict. `expectJoinRefused`
 returns the rendered message rather than asserting it, so callers can compare two refusals for
@@ -663,9 +663,9 @@ Both forms autofocus their first field (`JoinSessionForm.tsx:106`, `CreateSessio
 All in `e2e/game.ts`:
 - `SUBMIT_ATTEMPTS = 3` (`e2e/game.ts:195`, anchor: `SUBMIT_ATTEMPTS`) and `SUBMIT_EFFECT_TIMEOUT_MS = 2_000` (`e2e/game.ts:206`, anchor: `SUBMIT_EFFECT_TIMEOUT_MS`).
 - `expectFormReady(seat, field, formName)` (`e2e/game.ts:223`, anchor: `expectFormReady`) asserts the first field `toBeFocused()` — an observable condition proving Firefox's autofocus flush and its scroll-into-view already happened, closing the window *before* anything is typed. A condition on state, never a longer timeout.
-- `submitUntilHandled(seat, submitName, busyName)` (`e2e/game.ts:246`, anchor: `submitUntilHandled`) clicks, then polls a disjunction of three observable effects — the busy/relabelled button, a `role="alert"` refusal summary, or the `Game Lobby` heading — and re-dispatches the click only while none of them is observed, up to three attempts, then throws with a message naming the condition that failed.
-- `fillJoinForm(seat, joinCode)` (`e2e/game.ts:285`, anchor: `fillJoinForm`) asserts the fields committed their values, asserting the join code's **length** and never its value (ADR-071: a failing matcher prints its received value and a custom message becomes a step title even on success, so either channel would publish the secret; length is also invariant under the field's own uppercasing).
-- All three call sites — `createSession` (`e2e/game.ts:314`), `joinSession` (`e2e/game.ts:342`) and `expectJoinRefused` (`e2e/game.ts:376`) — were rewired onto these helpers, because all three had the identical blind click→assert shape and the same autofocus exposure.
+- `submitUntilHandled(seat, submitName, busyName)` (`e2e/game.ts:249`, anchor: `submitUntilHandled`) clicks, then polls a disjunction of three observable effects — the busy/relabelled button, a `role="alert"` refusal summary, or the `Game Lobby` heading — and re-dispatches the click only while none of them is observed, up to three attempts, then throws with a message naming the condition that failed.
+- `fillJoinForm(seat, joinCode)` (`e2e/game.ts:305`, anchor: `fillJoinForm`) asserts the fields committed their values, asserting the join code's **length** and never its value (ADR-071: a failing matcher prints its received value and a custom message becomes a step title even on success, so either channel would publish the secret; length is also invariant under the field's own uppercasing).
+- All three call sites — `createSession` (`e2e/game.ts:334`), `joinSession` (`e2e/game.ts:362`) and `expectJoinRefused` (`e2e/game.ts:396`) — were rewired onto these helpers, because all three had the identical blind click→assert shape and the same autofocus exposure.
 
 ### The safety invariant
 
@@ -750,3 +750,44 @@ is a deliberate boundary and worth stating rather than leaving to be noticed: `A
 real components against a stubbed `fetch`, so reaching game-over there means playing a whole game
 through stubs. The game-screen-to-game-over routing beside it is untested for the same reason. If that
 boundary is to move, it moves for both.
+
+## Amendment, 2026-09-08 (EOP-246)
+
+Raised as a MINOR observation by `@tester-unit-and-quality` during the `EOP-238` sign-off round and
+judged a non-defect, so it was filed as a tracked finding rather than fixed inside that story. The
+EOP-238 amendment above stands as written; this records what changed after it.
+
+### The observation
+
+`submitUntilHandled` located the submit button and clicked it without first asserting it was there.
+A button that is absent — because the form never rendered, or because an accessible name moved in the
+UI — therefore surfaced as Playwright's own actionability timeout on `click()`. That is *unhelpful
+rather than incorrect*: in a CI log it looks much like the lost-click failure the helper exists to
+describe, while having an entirely different cause.
+
+It was not a defect, and the reason it was not is worth keeping: every caller asserts the form's `h1`
+before reaching this point, so a missing submit button implies a UI change that would break far more
+than this helper. The safety invariant in the EOP-238 amendment above is unaffected either way — it
+rests on the disjunction of observable effects, not on the button's presence.
+
+### The fix
+
+`submitUntilHandled` (`e2e/game.ts:249`, anchor: `submitUntilHandled`) now asserts the submit button
+`toBeVisible()` **once, before** entering the attempt loop, with a message naming the seat and the
+expected accessible name. *Absent* and *inert* are now two failures with two messages, which is the
+whole point of the helper carrying a message of its own.
+
+Two properties of that placement are deliberate. It is **outside** the loop: a button observed present
+on the first attempt has not vanished by the third, so re-asserting per attempt would slow the poll to
+restate what is already known. And it is a **diagnostic, not a safety assertion** — it narrows what the
+loop's own message can mean rather than guarding anything, so nothing downstream depends on it.
+
+### Scope
+
+`e2e/game.ts` only. No production code and no test-behaviour change: the suite asserts exactly what it
+asserted before, and a passing run is byte-identical in outcome. Only the failure message for a
+condition the suite does not currently meet is different.
+
+The line-number citations in the amendments above were re-pointed in the same commit, since inserting
+this assertion shifted every symbol below it in `e2e/game.ts` — `submitUntilHandled` by three lines and
+everything after it by twenty. The prose of those amendments is unchanged.

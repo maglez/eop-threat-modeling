@@ -239,6 +239,9 @@ async function expectFormReady(seat: Seat, field: Locator, formName: string): Pr
  * scenario would then fail on a player count instead of here. A submit that had no
  * effect issued nothing, so re-dispatching it cannot double anything.
  *
+ * The button's presence is established before the loop, so that *absent* and *inert*
+ * are two failures with two messages rather than one shape in a CI log (EOP-246).
+ *
  * @param seat the seat whose form is on screen
  * @param submitName the accessible name of the idle submit button
  * @param busyName the accessible name that button takes while the request is in flight
@@ -248,6 +251,23 @@ async function submitUntilHandled(seat: Seat, submitName: string, busyName: stri
     const busy = seat.page.getByRole('button', { name: busyName });
     const lobby = seat.page.getByRole('heading', { level: 1, name: 'Game Lobby' });
     const refusal = seat.page.getByRole('alert');
+
+    /*
+     * Once, before the loop, and this is a diagnostic rather than a safety assertion.
+     * `click()` on a button that is not there fails with Playwright's own actionability
+     * timeout, which in a CI log looks much like the lost click below while having an
+     * entirely different cause: the form never rendered, or an accessible name moved in
+     * the UI. Naming the seat and the expected name here means the loop's own message is
+     * only ever reached for the condition it actually describes.
+     *
+     * Deliberately outside the loop. A button observed present on the first attempt has
+     * not vanished by the third, so re-asserting would slow the poll to restate what is
+     * already known — and it is the poll, not this, that detects a click achieving nothing.
+     */
+    await expect(
+        submit,
+        `${seat.displayName}'s form has no visible "${submitName}" button, so no submit could be dispatched`,
+    ).toBeVisible();
 
     const handled = async (): Promise<boolean> =>
         (await busy.isVisible()) || (await refusal.isVisible()) || (await lobby.isVisible());
