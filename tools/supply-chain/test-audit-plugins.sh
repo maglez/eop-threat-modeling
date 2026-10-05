@@ -180,7 +180,7 @@ cat > "$workdir/fixture-missing-metadata-vulns.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
-# Fixture 3: clean audit — no findings, all three allowlisted GHSAs present
+# Fixture 3: clean audit — no findings, all four allowlisted GHSAs present
 # in the report so the staleness check passes.
 # Shape mirrors a real npm audit --json output with zero vulnerabilities.
 # ---------------------------------------------------------------------------
@@ -230,6 +230,27 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "range": ">=6.21.0 <6.21.1",
       "nodes": ["node_modules/undici"],
       "fixAvailable": true
+    },
+    "@fastify/busboy": {
+      "name": "@fastify/busboy",
+      "severity": "high",
+      "via": [
+        {
+          "source": 1099522,
+          "name": "@fastify/busboy",
+          "dependency": "@fastify/busboy",
+          "title": "@fastify/busboy vulnerable to Denial of Service via prototype-named multipart part header",
+          "url": "https://github.com/advisories/GHSA-x8mw-p69m-v3mx",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": ">=1.0.0 <3.2.1"
+        }
+      ],
+      "effects": [],
+      "range": ">=1.0.0 <3.2.1",
+      "nodes": ["node_modules/@fastify/busboy"],
+      "fixAvailable": true
     }
   },
   "metadata": {
@@ -237,9 +258,9 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 3,
+      "high": 4,
       "critical": 0,
-      "total": 3
+      "total": 4
     },
     "dependencies": {
       "prod": 7,
@@ -323,7 +344,7 @@ run_advisory_check \
 echo
 echo "--- Valid audit documents ---"
 run_advisory_check \
-    "all three allowlisted GHSAs present: exits 0 (clean)" \
+    "all four allowlisted GHSAs present: exits 0 (clean)" \
     "$workdir/fixture-clean-with-allowlisted.json" \
     0
 
