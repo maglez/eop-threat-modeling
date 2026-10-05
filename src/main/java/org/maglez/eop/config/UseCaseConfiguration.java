@@ -213,20 +213,18 @@ public class UseCaseConfiguration {
     /**
      * Declares the hand dealer, deliberately ungated.
      *
-     * <p>It is the act of dealing, shared by {@link DealHandsUseCase} and {@link NewGameUseCase},
-     * which are gated on two <em>different</em> flags &mdash; {@code eop.features.trick-play} and
-     * {@code eop.features.game-over}. Gating this bean on either one would make the other flag
-     * implicitly require it, so {@code game-over=true} with {@code trick-play=false}, a configuration
-     * that is legal today, would fail to start with an unsatisfied dependency naming a class that has
-     * nothing to do with the cause. This is the same reasoning already recorded for
-     * {@link DeckShuffler} below, and it is what allows the deal to live in one place instead of two
-     * (ADR-013).
+     * <p>It is the act of dealing, shared by {@link DealHandsUseCase} and {@link NewGameUseCase}.
+     * Gating this bean on a feature flag would make one flag implicitly require another, so a
+     * {@code trick-play=false} configuration in which a caller sat behind a flag of its own would
+     * fail to start with an unsatisfied dependency naming a class that has nothing to do with the
+     * cause. This is the same reasoning already recorded for {@link DeckShuffler} below, and it is
+     * what allows the deal to live in one place instead of two (ADR-013).
      *
      * <p>Ungated does not mean unguarded. The dealer reaches the hand tables, so the containment
      * claim for {@code eop.features.trick-play} rests on both of its callers being gated rather than
-     * on the dealer itself: with the flag off and {@code game-over} off, nothing injects it. What the
-     * dealer notably does <em>not</em> do is authorise anybody &mdash; that stays with each calling
-     * use case, as {@link HandRepository} requires (ADR-024).
+     * on the dealer itself: with the flag off, nothing injects it. What the dealer notably does
+     * <em>not</em> do is authorise anybody &mdash; that stays with each calling use case, as
+     * {@link HandRepository} requires (ADR-024).
      *
      * @param cardRepository the port the whole deck is read through
      * @param deckShuffler the port that randomises the deck before it is dealt
@@ -323,8 +321,8 @@ public class UseCaseConfiguration {
      * @param trickRepository the port tricks are opened, appended to and resolved through
      * @param sessionRepository the port the session is completed through when the last trick resolves
      * @param sessionEventPublisher the transport each write is announced on, after it has landed
-     * @param persistGameResultUseCase writes the final standings, empty when the game-over feature is
-     *     off — the game still completes, it is simply not recorded
+     * @param persistGameResultUseCase writes the final standings; the Optional is retained although
+     *     its former {@code eop.features.game-over} gate was removed, so it is always present
      * @return the trick journal
      */
     @Bean
@@ -479,7 +477,7 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the get-leaderboard use case, behind {@code eop.features.game-over}.
+     * Declares the get-leaderboard use case.
      *
      * @param resolvePlayerUseCase  resolves the acting player from the identity token
      * @param gameResultRepository  reads the persisted game result
@@ -487,7 +485,6 @@ public class UseCaseConfiguration {
      * @return the get-leaderboard use case
      */
     @Bean
-    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
     public GetLeaderboardUseCase getLeaderboardUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final GameResultRepository gameResultRepository,
@@ -496,7 +493,7 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the persist-game-result use case, behind {@code eop.features.game-over}.
+     * Declares the persist-game-result use case.
      *
      * @param sessionRepository    reads the session and its players
      * @param trickRepository      reads the tricks for scoring
@@ -506,7 +503,6 @@ public class UseCaseConfiguration {
      * @return the persist-game-result use case
      */
     @Bean
-    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
     public PersistGameResultUseCase persistGameResultUseCase(
             final SessionRepository sessionRepository,
             final TrickRepository trickRepository,
@@ -518,12 +514,12 @@ public class UseCaseConfiguration {
     }
 
     /**
-     * Declares the new-game use case, behind {@code eop.features.game-over}.
+     * Declares the new-game use case.
      *
      * <p>It reaches the deal through the ungated {@link HandDealer} rather than through
-     * {@link DealHandsUseCase}, which is gated on {@code eop.features.trick-play}: injecting one
-     * gated use case into another would make {@code game-over} silently require {@code trick-play}
-     * and fail the context on a configuration that is legal today (ADR-013).
+     * {@link DealHandsUseCase}, which is gated on {@code eop.features.trick-play}: injecting the
+     * gated use case would make this ungated one silently require {@code trick-play} and fail the
+     * context whenever that flag is off (ADR-013).
      *
      * @param resolvePlayerUseCase  resolves the acting player from the identity token
      * @param handRepository        clears the hands of the finished game
@@ -534,7 +530,6 @@ public class UseCaseConfiguration {
      * @return the new-game use case
      */
     @Bean
-    @ConditionalOnProperty(name = "eop.features.game-over", havingValue = "true")
     public NewGameUseCase newGameUseCase(
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final HandRepository handRepository,

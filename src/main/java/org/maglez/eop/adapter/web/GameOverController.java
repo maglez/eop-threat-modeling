@@ -8,7 +8,6 @@ import java.util.Objects;
 import java.util.UUID;
 import org.maglez.eop.usecase.GetLeaderboardUseCase;
 import org.maglez.eop.usecase.NewGameUseCase;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,7 +29,6 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/sessions")
-@ConditionalOnProperty(prefix = "eop.features", name = "game-over", havingValue = "true")
 @Tag(name = "game-over", description = "Final leaderboard and new-game reset")
 public class GameOverController {
 

@@ -12,8 +12,7 @@ import java.util.UUID;
  * threw that type for two unrelated conditions, its own {@code @throws} tag admitted as much, and a seated
  * player was told "No session found with identifier ..." about a session they were demonstrably sitting in.
  *
- * <p>Three paths reach this state once {@code eop.features.game-over} is on, and only one of them is a
- * timing window:
+ * <p>Three paths reach this state, and only one of them is a timing window:
  *
  * <ul>
  *   <li><strong>The facilitator ended the session early.</strong> {@link EndSessionUseCase} records the

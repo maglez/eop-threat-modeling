@@ -45,9 +45,8 @@ import org.maglez.eop.entity.TooFewPlayersException;
  * tricks and hands were cleared would have paid for the refusal with the game.
  *
  * <p>{@link HandDealer} is not gated on a feature flag, which is what allows this class to reuse it.
- * This use case is a bean only when {@code eop.features.game-over} is on and {@link DealHandsUseCase}
- * only when {@code eop.features.trick-play} is, so depending on the other use case directly would
- * make {@code game-over} silently require {@code trick-play} (ADR-013).
+ * This use case and {@link DealHandsUseCase} are gated on different flags, so depending on the other
+ * use case directly would make one flag silently require the other (ADR-013).
  *
  * <p>Pure use case: no Spring, no Jakarta imports.
  */

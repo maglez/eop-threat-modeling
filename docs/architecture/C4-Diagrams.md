@@ -23,9 +23,10 @@ sits. No Level 1.
 Everything below reflects the code as it stands after **EOP-92** (`Hands.deal` deals every card
 again, so the `POST /deal` row in the endpoint table below is a full deal with nothing discarded —
 ADR-023 as amended by EOP-92; that row was stale for the whole EOP-72 equal-hands period and no
-diagram statement other than that one is affected), on top of **EOP-82** (`eop.features.game-over`
-flipped to `true`, so the game-over surface described below is live in the default configuration —
-ADR-042), on top of **EOP-65** (game-over leaderboard,
+diagram statement other than that one is affected), on top of **EOP-82** (which first flipped
+`eop.features.game-over` to `true`; that flag has since been removed, so the game-over surface
+described below is now ungated and live in every configuration — ADR-042), on top of **EOP-65**
+(game-over leaderboard,
 new-game reset, `game_result` and `game_result_player` tables — changesets `2026-08-16--game-result`
 001 and 002, ADR-039), on top of **EOP-11** (the lobby single-page application — the Level 3 view)
 and **EOP-22** (session expiry, the sweep scheduler and the `expires_at` column — changeset `006`),
@@ -34,19 +35,18 @@ trick-play HTTP routes, Slice C2's use-case layer, Slice C1's persistence layer 
 `005`), the trick-play schema from Slice B (changeset `004`), the client-address resolution
 introduced by EOP-26 (ADR-021) and the session lifecycle from EOP-10.
 
-**EOP-65 added the game-over feature behind `eop.features.game-over`, and EOP-82 flipped that flag
-to `true` — it is the shipped default in `application.yml`, and `application-prod.yml` carries no
-`eop.features` block, so the game-over surface described here is live under
-`SPRING_PROFILES_ACTIVE=prod` (ADR-042).** It shipped `false` from EOP-65 until EOP-82, during
-which the routes below existed in the code but not in the running application. When the
+**EOP-65 added the game-over feature behind `eop.features.game-over` and EOP-82 flipped that flag
+to `true`; the flag was subsequently removed entirely, so the game-over surface described here is
+ungated and live in every configuration (ADR-042).** It shipped `false` from EOP-65 until EOP-82,
+during which the routes below existed in the code but not in the running application. When the
 last trick resolves, `ResolveTrickUseCase` calls `PersistGameResultUseCase` (best-effort, via
 `Optional` injection) to write a `game_result` header row and one `game_result_player` row per
 seated player. `GetLeaderboardUseCase` reads that record and re-derives scores from the live trick
 history (ADR-030: a persisted standing is never read back to answer the score). `NewGameUseCase`
 resets a COMPLETED session to IN_PROGRESS via a non-atomic four-step sequence (ADR-039): clear
-tricks → clear hands → compare-and-swap status → re-deal. The new `GameOverController` exposes
-`GET /{sessionId}/leaderboard` and `POST /{sessionId}/new-game`; both are absent when the flag is
-off. `GameResultRepository` is the twelfth port. Slice B was schema-only.
+tricks → clear hands → compare-and-swap status → re-deal. The `GameOverController` exposes
+`GET /{sessionId}/leaderboard` and `POST /{sessionId}/new-game`; both are always present now that
+the flag has been removed. `GameResultRepository` is the twelfth port. Slice B was schema-only.
 Slice C1 added the persistence components — one adapter, two ports, five JPA entities and five
 Spring Data interfaces — but no caller. Slice C2 wrote the caller: three use cases
 (`DealHandsUseCase`, `PlayCardUseCase`, `ResolveTrickUseCase`), one new port — `DeckShuffler`, the
@@ -193,7 +193,7 @@ flowchart LR
         SCORE["ScoreController<br/>EOP-15 Slice B — one route, the sixth behind this flag<br/>GET /score<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>separate from TrickController because a score is not a move<br/>names only cards already face up, which is what separates it from GET /hand (ADR-027)"]
         ESC["EndSessionController<br/>EOP-15 Slice C — one route, the seventh behind this flag<br/>POST /{sessionId}/end<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.trick-play is off<br/>facilitator-only: authz in the domain entity before the status check"]
         SDTO["ScoreSheetDto · ScoredPlayDto · StandingDto<br/>EOP-15 Slice B<br/>ScoredPlayDto is one row of the printed Score Card — name, points, card, component(s), notes<br/>the display name travels as a plain string; no token digest crosses this boundary<br/>StandingDto publishes position and tied, so a shared first place reads as a tie<br/>no winner field — position 1 held by two seats is the answer"]
-        GOC["GameOverController<br/>EOP-65 — two routes<br/>GET /{sessionId}/leaderboard · POST /{sessionId}/new-game<br/>@ConditionalOnProperty havingValue=true<br/>bean absent when eop.features.game-over is off<br/>facilitator-only for new-game; any seated player may read the leaderboard"]
+        GOC["GameOverController<br/>EOP-65 — two routes<br/>GET /{sessionId}/leaderboard · POST /{sessionId}/new-game<br/>ungated since the eop.features.game-over flag was removed<br/>facilitator-only for new-game; any seated player may read the leaderboard"]
         GODTO["LeaderboardDto · LeaderboardRowDto<br/>EOP-65<br/>LeaderboardRowDto carries capturedBySuit — STRIDE breakdown per player<br/>derived from ScoreSheet.capturedBySuitByPlayer(), never from stored scores (ADR-030)"]
         CC["CardController<br/>EOP-13 — the card catalogue, read-only"]
         GEH["GlobalExceptionHandler<br/>RFC 9457 problem details"]
@@ -228,9 +228,9 @@ flowchart LR
         GETSCORE["GetScoreUseCase<br/>EOP-15 Slice B — the thirteenth use case<br/>reaches two collaborators only: resolving the caller already yields the session and its players<br/>derives the score from the whole trick history — nothing is accumulated (ADR-030)<br/>no HandRepository and no status check: before the deal, everybody on nothing is a true answer<br/>bean exists only while eop.features.trick-play is true"]
         ENDSESSION["EndSessionUseCase<br/>EOP-15 Slice C — the fourteenth use case<br/>facilitator-only: authz in the domain entity before the status check<br/>auto-complete also fires from ResolveTrickUseCase when nextLeaderSeat is empty<br/>bean exists only while eop.features.trick-play is true"]
         SWEEP["SweepExpiredSessionsUseCase<br/>EOP-22 — the fifteenth use case<br/>finds sessions where expires_at &lt; now and deletes them<br/>bean exists only while eop.features.session-lifecycle is true"]
-        GETLEAD["GetLeaderboardUseCase<br/>EOP-65 — the sixteenth use case<br/>re-derives score from live trick history (ADR-030) — never reads stored scores<br/>bean exists only while eop.features.game-over is true"]
-        PERSIST["PersistGameResultUseCase<br/>EOP-65 — the seventeenth use case<br/>called best-effort by ResolveTrickUseCase via Optional injection after last trick<br/>no authorisation check — caller already authorised<br/>bean exists only while eop.features.game-over is true"]
-        NEWGAME["NewGameUseCase<br/>EOP-65 — the eighteenth use case<br/>facilitator-only; non-atomic 4-step reset (ADR-039)<br/>clears tricks then hands, resets session to IN_PROGRESS, re-deals<br/>bean exists only while eop.features.game-over is true"]
+        GETLEAD["GetLeaderboardUseCase<br/>EOP-65 — the sixteenth use case<br/>re-derives score from live trick history (ADR-030) — never reads stored scores<br/>ungated since the eop.features.game-over flag was removed"]
+        PERSIST["PersistGameResultUseCase<br/>EOP-65 — the seventeenth use case<br/>called best-effort by ResolveTrickUseCase via Optional injection after last trick<br/>no authorisation check — caller already authorised<br/>ungated since the eop.features.game-over flag was removed"]
+        NEWGAME["NewGameUseCase<br/>EOP-65 — the eighteenth use case<br/>facilitator-only; non-atomic 4-step reset (ADR-039)<br/>clears tricks then hands, resets session to IN_PROGRESS, re-deals<br/>ungated since the eop.features.game-over flag was removed"]
 
         P1(["SessionRepository"])
         P2(["SessionEventPublisher<br/>reached by six use cases since EOP-15 Slice C<br/>every trick-play write publishes after it returns"])
@@ -448,7 +448,7 @@ job:
 - **Every trick-play write now also broadcasts, and the edge direction is the point.** The three new
   `--> SessionEventPublisher` edges are outward from `usecase` to a port `usecase` owns, so the
   dependency still points inward; `SseSessionEventPublisher` in `adapter/web` implements it. Each
-  `publish` sits *after* the port write returns — `HandDealer.java:143` (anchor: `HAND_DEALT`),
+  `publish` sits *after* the port write returns — `HandDealer.java:142` (anchor: `HAND_DEALT`),
   `TrickJournal.java:125` (anchor: `CARD_PLAYED`), `TrickJournal.java:158` (anchor: `TRICK_RESOLVED`),
   the latter two having moved out of `PlayCardUseCase` and `ResolveTrickUseCase` into the shared
   journal in EOP-190 — so a broadcast can only describe a
@@ -1177,9 +1177,9 @@ trick-play row: `TrickController` injects five and publishes five routes,
 paragraph said no controller injected any of them and no route existed, and called that Slice D's
 work; Slice D did it, so containment by absence of a caller is over twice over — once because the
 callers exist and once because the caller of the callers does. What replaces it is
-`eop.features.trick-play`. `application.yml` declares **three** flags, and as of EOP-82 all three
-are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:195` (anchor: `session-lifecycle`)), `trick-play`
-(on since EOP-70, `application.yml:212` (anchor: `trick-play`), ADR-040) and `game-over` (on since EOP-82, `application.yml:224` (anchor: `game-over`), ADR-042). The seven
+`eop.features.trick-play`. `application.yml` declares **two** flags, and both
+are `true`: `session-lifecycle` (on since EOP-25, 2026-08-16, `application.yml:194` (anchor: `session-lifecycle`)) and `trick-play`
+(on since EOP-70, `application.yml:211` (anchor: `trick-play`), ADR-040). The seven
 use-case beans carry
 `@ConditionalOnProperty(name = "eop.features.trick-play", havingValue = "true")` with
 `matchIfMissing` left at its default of `false` (`UseCaseConfiguration.java:264-373`), as do
