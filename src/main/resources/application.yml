@@ -173,7 +173,6 @@ eop:
   # docker compose -f compose.app.yml up -d (ADR-016).
   # As of EOP-25 (2026-08-16), eop.features.session-lifecycle is true (permanent
   # rollout). As of EOP-70 (2026-08-17), eop.features.trick-play is true.
-  # As of EOP-82 (2026-08-18), eop.features.game-over is true.
   features:
     # Session create, join, state, event stream and start (EOP-10). While this is
     # false neither the controller bean nor the create-session, join-session,
@@ -210,18 +209,6 @@ eop:
     # HandNotDealtException 409.
     # Only the literal true turns this on (havingValue = "true" on all conditions).
     trick-play: true
-
-    # Final leaderboard and "Start new game" action (EOP-65). While this is false the
-    # leaderboard and new-game routes return the framework's own 404, and the
-    # GetLeaderboardUseCase, PersistGameResultUseCase and NewGameUseCase beans do not exist.
-    # The game_result and game_result_player tables are created by Liquibase regardless of
-    # this flag; the flag only gates the application-level behaviour.
-    #
-    # Enabled by EOP-82 (2026-08-18): leaderboard and new-game are now live. While this
-    # was false the leaderboard route returned Spring's static-resource 404 and
-    # PersistGameResultUseCase never ran, so no GameResult row was ever written. The flag
-    # will be removed once the feature is confirmed stable (ADR-013).
-    game-over: true
 
   # Expired-session sweep configuration (ADR-036). These are infrastructure
   # toggles, not feature flags — they belong under eop.* directly rather than

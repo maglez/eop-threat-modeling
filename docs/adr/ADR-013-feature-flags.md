@@ -189,7 +189,7 @@ beans and three controllers — ten beans in all**: `DealHandsUseCase`, `ReadOwn
 off. `TrickPlayDisabledIntegrationTest` asserts both halves at that arity: ten beans absent
 (`:90`, `:96`, `:102`, `:108`, `:123`, `:130`, `:136`, `:143`, `:150`, `:163`) *and* seven routes
 404 (`:171`, `:179`, `:189`, `:197`, `:205`, `:212`, `:220`). The flag is **`true`** —
-`application.yml:212` (anchor: `trick-play`), flipped by EOP-70; see the 2026-08-17 note below.
+`application.yml:211` (anchor: `trick-play`), flipped by EOP-70; see the 2026-08-17 note below.
 
 *(Amended 2026-08-21, EOP-41 — every figure and anchor in the paragraph above was re-derived before
 being written, because none of the previous ones survived. It read "this is the register's current
@@ -378,7 +378,7 @@ endpoints and the sweep were live; it did not mean the full game was playable.
 
 *(Amended 2026-08-21, EOP-49 — tense pinned, because this paragraph was written in the present and
 had become the opposite of true. `eop.features.trick-play` is `true` as of EOP-70 (2026-08-17),
-`application.yml:212` (anchor: `trick-play`), so the deal, play and resolve-trick routes are present and the released
+`application.yml:211` (anchor: `trick-play`), so the deal, play and resolve-trick routes are present and the released
 surface is no longer lobby-only. This mattered more than an ordinary stale sentence: as the flag
 register, this document is where every other ADR now sends a reader for the flag's value — ADR-023
 and `docs/adr/README.md` both drop their own arity and point here — and it was simultaneously

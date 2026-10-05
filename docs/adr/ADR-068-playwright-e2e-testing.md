@@ -518,7 +518,7 @@ games Chromium's finished game is already persisted.
 The ticket's fourth criterion expected `POST /new-game` to move the session "back to LOBBY" with
 "all players returned to the lobby screen". It does not. The use case clears tricks and hands,
 resets the session straight to `IN_PROGRESS` and deals a fresh deck to the same players in the
-same seats (`NewGameUseCase.java:130`, anchor: `resetToInProgress`).
+same seats (`NewGameUseCase.java:129`, anchor: `resetToInProgress`).
 `SessionStatus.LOBBY` is not re-entered by any code path.
 
 The front end used to briefly *render* the lobby: it routed the facilitator through

@@ -27,12 +27,11 @@ import org.maglez.eop.entity.TooFewPlayersException;
  * underneath are informative by design, which is right for a member of the table and an oracle for
  * anybody else (ADR-024).
  *
- * <p>It is deliberately <em>not</em> gated on a feature flag. Both of its callers are gated, on
- * different flags &mdash; {@code eop.features.trick-play} for {@link DealHandsUseCase} and
- * {@code eop.features.game-over} for {@link NewGameUseCase} &mdash; so gating this class on either
- * one would make the other flag implicitly require it, and a configuration that is legal today
- * ({@code game-over} on, {@code trick-play} off) would fail to start with an unsatisfied dependency
- * pointing at a class that has nothing to do with the cause. That reasoning is already recorded for
+ * <p>It is deliberately <em>not</em> gated on a feature flag. One of its callers,
+ * {@link DealHandsUseCase}, sits behind {@code eop.features.trick-play}; the other,
+ * {@link NewGameUseCase}, is ungated since its former {@code eop.features.game-over} gate was
+ * removed once the feature reached permanent rollout. Gating this class on trick-play would make
+ * the ungated caller silently require it. That reasoning is already recorded for
  * {@link DeckShuffler} in the configuration that wires these beans (ADR-013).
  *
  * <p>Only two things are read from the session: its identifier and its seats. The status is

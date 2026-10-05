@@ -39,7 +39,7 @@ import org.yaml.snakeyaml.Yaml;
  * feature off would be testing its absence; {@code .opencode/rules/feature-flags.md} requires that
  * pin and it must not be removed. But it creates a blind spot: any test that reads the Spring
  * {@link org.springframework.core.env.Environment} sees the test-resource value, not the shipped
- * default, so an assertion like {@code environment.getProperty("eop.features.game-over")} passes
+ * default, so an assertion like {@code environment.getProperty("eop.features.trick-play")} passes
  * even when the flag is still {@code false} in {@code application.yml}. That is exactly the trap
  * that caused EOP-82: the flag was {@code false} in the shipped YAML while the suite ran green,
  * and a finished feature shipped dark for two stories. This class therefore reads
@@ -288,8 +288,8 @@ class FeatureFlagRegistryTest {
         assertThat(shippedFlagKeys())
                 .as("If this is empty the derivation found nothing and every assertion above is vacuous:"
                         + " comparing two empty sets passes. Either %s is no longer on the test classpath, or"
-                        + " the eop.features block was renamed or removed. The three keys expected today are"
-                        + " eop.features.session-lifecycle, eop.features.trick-play and eop.features.game-over.",
+                        + " the eop.features block was renamed or removed. The two keys expected today are"
+                        + " eop.features.session-lifecycle and eop.features.trick-play.",
                         SHIPPED_YAML)
                 .isNotEmpty();
     }
@@ -391,7 +391,7 @@ class FeatureFlagRegistryTest {
      * {@code @ConditionalOnProperty("eop.features.trick-play")} populates {@code value} and leaves
      * {@code name} empty; both are read and unioned. {@code prefix} is joined back on with a dot,
      * because both spellings are in use in this repository — {@code prefix = "eop.features", name =
-     * "game-over"} and the fully dotted {@code name = "eop.features.game-over"} — and only the
+     * "trick-play"} and the fully dotted {@code name = "eop.features.trick-play"} — and only the
      * effective, operator-settable key can be compared with the YAML.
      *
      * @param attributes the annotation's attributes, with declared defaults already applied

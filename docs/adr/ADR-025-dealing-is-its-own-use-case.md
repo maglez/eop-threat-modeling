@@ -185,7 +185,7 @@ whole trick, and a client still learns of a deal, a play or a resolution only by
 **2026-08-14, EOP-14 Slice E.** The second half is discharged, and the two paragraphs above are now
 history rather than description. All three writes are paired with a publish on the write, though
 since EOP-190 none of the three publishers is held by the use case that owns the route:
-`HandDealer.java:143` (anchor: `HAND_DEALT`) emits `HAND_DEALT` — EOP-190 moved the deal, and with
+`HandDealer.java:142` (anchor: `HAND_DEALT`) emits `HAND_DEALT` — EOP-190 moved the deal, and with
 it the publisher, out of `DealHandsUseCase` and into that collaborator so `NewGameUseCase` could
 stop holding a second copy of it — while `CARD_PLAYED` and `TRICK_RESOLVED` are both emitted by
 `TrickJournal`, at `TrickJournal.java:125` (anchor: `CARD_PLAYED`) and
@@ -282,7 +282,7 @@ most: `:140`, `:147-149`, `:156`, `:168-170` and `:181-190` had all come to land
 javadoc `@throws` block, roughly forty lines above the code they name, so a reader following one to
 confirm a pre-flight arrived at documentation and could confirm nothing. Only `Trick.java:372` and
 `:378`, `Hand.java:115` and the deal's publish were still right, and those are untouched. The last
-of them now reads `HandDealer.java:143` (anchor: `HAND_DEALT`): EOP-190 moved the line rather than
+of them now reads `HandDealer.java:142` (anchor: `HAND_DEALT`): EOP-190 moved the line rather than
 changing it, and this sentence is re-pointed rather than rewritten because the audit it records
 found the claim sound.
 The enumeration itself was re-checked while the anchors were: the constructor still makes nine

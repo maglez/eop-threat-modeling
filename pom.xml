@@ -35,11 +35,15 @@
               postgresql       42.7.11 -> 42.7.12  CVE-2026-54291 (HIGH) SCRAM-SHA-256 MITM
                                                    protection bypass. The only HIGH, and the
                                                    only directly-declared dependency of the nine.
-              jackson-2-bom    2.21.4  -> 2.21.5   CVE-2026-54515, CVE-2026-59889,
-                                                   GHSA-mhm7-754m-9p8w (all MEDIUM). Jackson 2
-                                                   is on the compile tree only via
+              jackson-2-bom    2.21.4  -> 2.21.7   CVE-2026-54515, CVE-2026-59889,
+                                                   GHSA-mhm7-754m-9p8w (all MEDIUM), then
+                                                   CVE-2026-89407, CVE-2026-89425,
+                                                   CVE-2026-68497, CVE-2026-91776,
+                                                   CVE-2026-91777 (all HIGH). Jackson 2 is on
+                                                   the compile tree only via
                                                    springdoc -> swagger-core-jakarta.
-              jackson-bom      3.1.4   -> 3.1.5    CVE-2026-59889 (MEDIUM). This is Jackson 3
+              jackson-bom      3.1.4   -> 3.1.7    CVE-2026-59889 (MEDIUM), then the same five
+                                                   HIGH CVEs. This is Jackson 3
                                                    (`tools.jackson.*`), Boot 4's own JSON stack.
               log4j2           2.25.4  -> 2.25.5   CVE-2026-49844 (MEDIUM). Reached at depth 3
                                                    via log4j-to-slf4j; note the enforcer's
@@ -65,8 +69,8 @@
             `./mvnw help:effective-pom` after a parent bump; nothing automated catches this.
         -->
         <postgresql.version>42.7.12</postgresql.version>
-        <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
-        <jackson-bom.version>3.1.5</jackson-bom.version>
+        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+        <jackson-bom.version>3.1.7</jackson-bom.version>
         <log4j2.version>2.25.5</log4j2.version>
         <tomcat.version>11.0.25</tomcat.version>
 

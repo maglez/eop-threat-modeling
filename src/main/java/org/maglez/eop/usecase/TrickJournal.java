@@ -62,8 +62,8 @@ public class TrickJournal {
      * @param trickRepository port the tricks are written through
      * @param sessionRepository port the session is completed through when the last trick resolves
      * @param sessionEventPublisher announces each write once it has landed
-     * @param persistGameResultUseCase records the final score, absent when the game-over feature
-     *     flag is off. Absent rather than null so that a game can finish without a leaderboard
+     * @param persistGameResultUseCase records the final score. Absent rather than null so that a
+     *     game can finish without a leaderboard
      */
     public TrickJournal(
             final TrickRepository trickRepository,

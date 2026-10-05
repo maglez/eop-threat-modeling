@@ -37,9 +37,9 @@
       "reported_range": "<6.24.0",
       "installed": "5.29.0",
       "title": "Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
       "reachability": "Not reached, on two independent grounds. (1) The defect is in undici's WebSocket client. The only package in the tree that requires undici is @ai-sdk/provider-utils, whose sole use is createSafeNodeFetch() in dist/index.js -- a createRequire(...)(\"undici\") that destructures { Agent, fetch } and nothing else. WebSocket is never imported, so the vulnerable class is never constructed. (2) That require sits behind isNodeRuntime(), which is `process.release.name === \"node\" && process.versions.bun == null`. OpenCode loads plugins under Bun, so it is false, getDefaultDownloadFetch() falls back to globalThis.fetch, and the undici module is never loaded at all.",
-      "no_fix_available": "There is no in-range upgrade. @ai-sdk/provider-utils@3.0.32 is the newest 3.x and depends on undici ^5.29.0; @ai-sdk/gateway@2.0.137 pins provider-utils to that exact version, so npm cannot lift it; and the `ai@^5.0.98` range that pulls the gateway in is declared by the plugin's own package.json, not by us. `npm audit fix` changes nothing and `--force` would require a breaking major we do not control.",
+      "no_fix_available": "There is no in-range upgrade. @ai-sdk/provider-utils@3.0.41 is the newest 3.x and depends on undici ^5.29.0; @ai-sdk/gateway@2.0.137 pins provider-utils to that exact version, so npm cannot lift it; and the `ai@^5.0.98` range that pulls the gateway in is declared by the plugin's own package.json, not by us. `npm audit fix` changes nothing and `--force` would require a breaking major we do not control.",
       "reviewed": "2026-08-20",
       "reviewed_under": "EOP-000"
     },
@@ -49,7 +49,7 @@
       "reported_range": "<6.24.0",
       "installed": "5.29.0",
       "title": "Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
       "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
       "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
       "reviewed": "2026-08-20",
@@ -61,10 +61,22 @@
       "reported_range": "<6.27.0",
       "installed": "5.29.0",
       "title": "undici WebSocket client vulnerable to denial of service via fragment count bypass",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.32 -> undici@^5.29.0",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
       "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
       "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
       "reviewed": "2026-08-20",
+      "reviewed_under": "EOP-000"
+    },
+    "GHSA-x8mw-p69m-v3mx": {
+      "module": "@fastify/busboy",
+      "severity": "high",
+      "reported_range": ">=1.0.0 <3.2.1",
+      "installed": "2.1.1",
+      "title": "@fastify/busboy vulnerable to denial of service via prototype-named multipart part header",
+      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> @ai-sdk/openai-compatible@1.0.58 -> @ai-sdk/provider-utils@3.0.41 -> undici@5.29.0 -> @fastify/busboy@^2.0.0",
+      "reachability": "Not reached, on three independent grounds. (1) The only package in the tree that requires undici is @ai-sdk/provider-utils, whose sole use is createSafeNodeFetch() in dist/index.js:485 -- a createRequire(...)(\"undici\") that destructures { Agent, fetch } and uses fetch for JSON request and response bodies. undici instantiates the vulnerable parser only inside Response.prototype.formData() (undici/lib/fetch/body.js:397, guarded by /multipart\\/form-data/.test(contentType)), which is never called on a multipart response here, so `new Busboy(...)` is never constructed. (2) That require sits behind isNodeRuntime() (dist/index.js:474-483), which is `process.release.name === \"node\" && process.versions.bun == null && ...`; OpenCode loads plugins under Bun, so it is false, getDefaultDownloadFetch() falls back to globalThis.fetch, and undici is never loaded at all. (3) Even on Node, undici's own call site already attaches `busboy.on('error', (err) => reject(new TypeError(err)))` at body.js:438, so the synchronous-throw variant is converted to a rejected promise rather than terminating the process.",
+      "no_fix_available": "There is no in-range upgrade. The fix (3.2.1) is a breaking major outside the dependent's declared range: undici@5.29.0 declares `@fastify/busboy ^2.0.0` and is the newest 5.x, and no undici 6.x/7.x/8.x is in range for its consumer. @ai-sdk/provider-utils@3.0.41 declares `undici ^5.29.0` and is the newest 3.x; @ai-sdk/openai-compatible@1.0.58 and @ai-sdk/gateway@2.0.162 pin provider-utils exactly; and @tarquinen/opencode-smart-title@0.1.7 is the plugin's newest release. npm cannot lift any link without a breaking major we do not control.",
+      "reviewed": "2026-10-05",
       "reviewed_under": "EOP-000"
     }
   }
