@@ -529,6 +529,26 @@ export async function startGame(sessionId: string, playerToken: string): Promise
 }
 
 /**
+ * End the game early (facilitator only).
+ *
+ * The server answers `204 No Content`, so this helper reads no body and
+ * therefore has no parser (ADR-045: a helper that reads no body gets no parser).
+ */
+export async function endSession(sessionId: string, playerToken: string): Promise<void> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/end`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      [PLAYER_TOKEN_HEADER]: playerToken,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await problemMessage(response));
+  }
+}
+
+/**
  * Subscribe to session events via SSE.
  *
  * Uses `fetch` rather than `EventSource` because `EventSource` cannot set

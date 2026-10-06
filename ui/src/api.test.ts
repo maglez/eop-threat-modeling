@@ -22,6 +22,8 @@ import {
   joinSession,
   getSession,
   startGame,
+  endSession,
+  PLAYER_TOKEN_HEADER,
   getLeaderboard,
   fetchHand,
   getTrickState,
@@ -361,6 +363,58 @@ describe('dealHands', () => {
       expect(e).toBeInstanceOf(ApiError);
       const apiErr = e as ApiError;
       expect(apiErr.status).toBe(409);
+    }
+  });
+});
+
+describe('endSession', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('posts to the end route with the player-token header and resolves void on 204', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        statusText: 'No Content',
+        json: () => Promise.resolve({}),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    await expect(endSession('session-1', 'token-abc')).resolves.toBeUndefined();
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/v1/sessions/session-1/end');
+    expect(options.method).toBe('POST');
+    expect((options.headers as Record<string, string>)[PLAYER_TOKEN_HEADER]).toBe('token-abc');
+  });
+
+  it('throws ApiError with the status when the server refuses (409 not in progress)', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        json: () => Promise.resolve({ title: 'Not in progress', detail: 'The session is not IN_PROGRESS.' }),
+        headers: new Headers(),
+      } as unknown as Response)
+    ));
+
+    await expect(endSession('session-1', 'token-abc')).rejects.toThrow(ApiError);
+
+    try {
+      await endSession('session-1', 'token-abc');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).status).toBe(409);
     }
   });
 });

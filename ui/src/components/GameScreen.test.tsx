@@ -815,4 +815,65 @@ describe('GameScreen', () => {
       });
     });
   });
+
+  describe('end game (facilitator only, EOP-255)', () => {
+    const facilitatorSession: api.SessionStateDto = {
+      ...mockSession,
+      players: [
+        { playerId: 'player1', displayName: 'Alice', seatOrder: 0, role: 'FACILITATOR', connectionStatus: 'CONNECTED' },
+        { playerId: 'player2', displayName: 'Bob', seatOrder: 1, role: 'PARTICIPANT', connectionStatus: 'CONNECTED' },
+        { playerId: 'player3', displayName: 'Charlie', seatOrder: 2, role: 'PARTICIPANT', connectionStatus: 'CONNECTED' },
+      ],
+    };
+
+    const renderGame = async (session: api.SessionStateDto): Promise<void> => {
+      vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing]));
+      vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+      vi.spyOn(api, 'getSession').mockResolvedValue(session);
+      vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+      vi.spyOn(api, 'endSession').mockResolvedValue(undefined);
+
+      render(<GameScreen {...defaultProps} session={session} />);
+      await waitFor(() => {
+        expect(screen.getByRole('group', { name: 'Your hand' })).toBeInTheDocument();
+      });
+    };
+
+    it('shows the End game button to the facilitator', async () => {
+      await renderGame(facilitatorSession);
+
+      expect(screen.getByRole('button', { name: 'End game' })).toBeInTheDocument();
+    });
+
+    it('never shows the End game button to a participant', async () => {
+      await renderGame(mockSession);
+
+      expect(screen.queryByRole('button', { name: 'End game' })).not.toBeInTheDocument();
+    });
+
+    it('asks for confirmation, and cancelling ends nothing', async () => {
+      await renderGame(facilitatorSession);
+
+      fireEvent.click(screen.getByRole('button', { name: 'End game' }));
+      expect(screen.getByText(/cannot be undone/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByText(/cannot be undone/)).not.toBeInTheDocument();
+      expect(api.endSession).not.toHaveBeenCalled();
+      // The plain button is back, so the facilitator can try again.
+      expect(screen.getByRole('button', { name: 'End game' })).toBeInTheDocument();
+    });
+
+    it('ends the game when the facilitator confirms', async () => {
+      await renderGame(facilitatorSession);
+
+      fireEvent.click(screen.getByRole('button', { name: 'End game' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, end the game' }));
+
+      await waitFor(() => {
+        expect(api.endSession).toHaveBeenCalledWith('test-session', 'test-token');
+      });
+    });
+  });
 });

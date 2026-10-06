@@ -5,6 +5,7 @@ import {
   playCard,
   getSession,
   subscribeToSession,
+  endSession,
   ApiError,
   type HandDto,
   type CardDto,
@@ -403,11 +404,14 @@ export function GameScreen({
   const [error, setError] = useState<string | null>(null);
   const [isPlayingCard, setIsPlayingCard] = useState(false);
   const [winnerDismissed, setWinnerDismissed] = useState(false);
+  const [confirmingEndGame, setConfirmingEndGame] = useState(false);
+  const [isEndingGame, setIsEndingGame] = useState(false);
   const winnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropZoneRef = useRef<HTMLDivElement | null>(null);
 
   const currentPlayer = session.players.find(p => p.playerId === playerId);
   const mySeats = currentPlayer?.seatOrder;
+  const isFacilitator = currentPlayer?.role === 'FACILITATOR';
 
   // Determine if it's my turn
   const isMyTurn = trickState?.seatToPlay !== undefined && mySeats !== undefined
@@ -627,6 +631,23 @@ export function GameScreen({
     setWinnerDismissed(true);
   };
 
+  // ---- End game early (facilitator) ----
+
+  const handleEndGame = async (): Promise<void> => {
+    setIsEndingGame(true);
+    try {
+      await endSession(sessionId, playerToken);
+      // No navigation here on purpose: the server publishes `game-completed` to
+      // every seat and this screen's own subscription handles it by calling
+      // onGameOver. Leaving the button disabled until that arrives stops a second
+      // click racing the event.
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not end the game. Please try again.');
+      setIsEndingGame(false);
+      setConfirmingEndGame(false);
+    }
+  };
+
   // ---- Layout helpers ----
 
   const otherPlayers = [...session.players]
@@ -693,6 +714,50 @@ export function GameScreen({
         >
           {turnLabel}
         </div>
+
+        {/* End game (facilitator only) — visible for the whole game, with an
+            inline confirmation, because ending early finalises the score and
+            cannot be undone. */}
+        {isFacilitator && (
+          <div style={{ marginBottom: '20px' }}>
+            {confirmingEndGame ? (
+              <>
+                <div role="alert" className="govuk-warning-text">
+                  <span className="govuk-warning-text__icon" aria-hidden="true">!</span>
+                  <strong className="govuk-warning-text__text">
+                    <span className="govuk-visually-hidden">Warning</span> End the game? The score is finalised from the cards played so far, and this cannot be undone.
+                  </strong>
+                </div>
+                <div className="govuk-button-group">
+                  <button
+                    type="button"
+                    className="govuk-button govuk-button--warning"
+                    disabled={isEndingGame}
+                    onClick={() => { void handleEndGame(); }}
+                  >
+                    {isEndingGame ? 'Ending...' : 'Yes, end the game'}
+                  </button>
+                  <button
+                    type="button"
+                    className="govuk-button govuk-button--secondary"
+                    disabled={isEndingGame}
+                    onClick={() => setConfirmingEndGame(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="govuk-button govuk-button--warning"
+                onClick={() => setConfirmingEndGame(true)}
+              >
+                End game
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Trick winner banner */}
         {showWinnerBanner && winnerPlayer && (
