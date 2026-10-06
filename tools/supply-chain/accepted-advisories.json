@@ -78,6 +78,30 @@
       "no_fix_available": "There is no in-range upgrade. The fix (3.2.1) is a breaking major outside the dependent's declared range: undici@5.29.0 declares `@fastify/busboy ^2.0.0` and is the newest 5.x, and no undici 6.x/7.x/8.x is in range for its consumer. @ai-sdk/provider-utils@3.0.41 declares `undici ^5.29.0` and is the newest 3.x; @ai-sdk/openai-compatible@1.0.58 and @ai-sdk/gateway@2.0.162 pin provider-utils exactly; and @tarquinen/opencode-smart-title@0.1.7 is the plugin's newest release. npm cannot lift any link without a breaking major we do not control.",
       "reviewed": "2026-10-05",
       "reviewed_under": "EOP-000"
+    },
+    "GHSA-p6vx-979v-rg4c": {
+      "module": "seroval",
+      "severity": "critical",
+      "reported_range": ">=0.12.0 <=1.6.0",
+      "installed": "1.5.6",
+      "title": "Seroval: `fromJSON()` Promise thenable assimilation invokes plugin-produced callables (bypass of GHSA-mv8w-475r-vwqw)",
+      "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
+      "reachability": "Not reached. seroval is imported only by solid-js/web/dist/server.js (lines 3-4), the SSR server-rendering entry, which pulls Serializer from seroval and plugins from seroval-plugins/web. Nothing in the installed DCP/@opentui tree imports solid-js/web at all: DCP is a terminal-UI plugin built on @opentui/solid, which renders to the terminal and never server-renders HTML, and solid-js's `node` export condition resolves the package root '.' to ./dist/server.js, the core server build, which imports no seroval. DCP's own dist/, lib/ and tui code reference seroval, hydrate, fromJSON and deserialize nowhere. This advisory is a defect in seroval's fromJSON() deserialisation path, reachable only when the SSR serializer revives untrusted input -- a path this tree never loads.",
+      "no_fix_available": "There is no in-range upgrade. seroval is pinned by solid-js: even the newest solid-js@1.9.15 declares `seroval ~1.5.4`, which excludes every patched release (1.6.1 fixes this critical, 1.6.3 the paired high). No DCP release lifts it -- 3.2.0 (newest stable) and 3.2.8-beta0 both still depend on solid-js. And no repo-side override is possible: OpenCode generates its own per-plugin manifest under ~/.cache/opencode/packages/@tarquinen/opencode-dcp@3.1.15/ and runs npm install itself, so nothing committed here reaches that install.",
+      "reviewed": "2026-10-06",
+      "reviewed_under": "EOP-000"
+    },
+    "GHSA-jp82-f5mq-hwhp": {
+      "module": "seroval",
+      "severity": "high",
+      "reported_range": "<=1.6.2",
+      "installed": "1.5.6",
+      "title": "Seroval: Memory exhaustion via unchecked TypedArray length in JSON deserialization",
+      "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
+      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's JSON deserialisation path, imported only by solid-js/web's SSR server-rendering entry, which this terminal-UI plugin tree never loads.",
+      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js, and no DCP or solid-js release in range moves it.",
+      "reviewed": "2026-10-06",
+      "reviewed_under": "EOP-000"
     }
   }
 }
