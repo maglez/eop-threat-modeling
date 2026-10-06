@@ -180,7 +180,7 @@ cat > "$workdir/fixture-missing-metadata-vulns.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
-# Fixture 3: clean audit — no findings, all four allowlisted GHSAs present
+# Fixture 3: clean audit — no findings, all six allowlisted GHSAs present
 # in the report so the staleness check passes.
 # Shape mirrors a real npm audit --json output with zero vulnerabilities.
 # ---------------------------------------------------------------------------
@@ -251,6 +251,38 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "range": ">=1.0.0 <3.2.1",
       "nodes": ["node_modules/@fastify/busboy"],
       "fixAvailable": true
+    },
+    "seroval": {
+      "name": "seroval",
+      "severity": "critical",
+      "via": [
+        {
+          "source": 1099523,
+          "name": "seroval",
+          "dependency": "seroval",
+          "title": "Seroval: `fromJSON()` Promise thenable assimilation invokes plugin-produced callables (bypass of GHSA-mv8w-475r-vwqw)",
+          "url": "https://github.com/advisories/GHSA-p6vx-979v-rg4c",
+          "severity": "critical",
+          "cwe": ["CWE-94"],
+          "cvss": {"score": 9.8, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+          "range": ">=0.12.0 <=1.6.0"
+        },
+        {
+          "source": 1099524,
+          "name": "seroval",
+          "dependency": "seroval",
+          "title": "Seroval: Memory exhaustion via unchecked TypedArray length in JSON deserialization",
+          "url": "https://github.com/advisories/GHSA-jp82-f5mq-hwhp",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=1.6.2"
+        }
+      ],
+      "effects": [],
+      "range": ">=0.12.0 <=1.6.2",
+      "nodes": ["node_modules/seroval"],
+      "fixAvailable": true
     }
   },
   "metadata": {
@@ -258,9 +290,9 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 4,
-      "critical": 0,
-      "total": 4
+      "high": 5,
+      "critical": 1,
+      "total": 6
     },
     "dependencies": {
       "prod": 7,
@@ -344,7 +376,7 @@ run_advisory_check \
 echo
 echo "--- Valid audit documents ---"
 run_advisory_check \
-    "all four allowlisted GHSAs present: exits 0 (clean)" \
+    "all six allowlisted GHSAs present: exits 0 (clean)" \
     "$workdir/fixture-clean-with-allowlisted.json" \
     0
 
