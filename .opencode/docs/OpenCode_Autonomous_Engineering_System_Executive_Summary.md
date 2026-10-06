@@ -347,15 +347,15 @@ This is the one population with findings, and it is the one that **never reaches
 
 | Severity | Advisories | Status |
 |---|---|---|
-| **CRITICAL** | 1 | `seroval` finding — not accepted, audit fails |
-| **HIGH** | 5 | Four traced to an unreachable code path and allowlisted; one `seroval` finding not accepted |
+| **CRITICAL** | 1 | Traced to an unreachable code path and allowlisted |
+| **HIGH** | 5 | All five traced to an unreachable code path and allowlisted |
 | **MODERATE** | 8 | Reported, not gated |
 | **LOW** | 4 | Reported, not gated |
-| **Total distinct advisories** | **18** | Audit result: **FAIL** |
+| **Total distinct advisories** | **18** | Audit result: **PASS** |
 
-Thirteen of the eighteen are the same dependency: `undici` 5.29.0, pulled in through a single chain from one plugin (`smart-title` → `ai` → `@ai-sdk/gateway` → `@ai-sdk/provider-utils` → `undici`). Every one of the three high-severity advisories is a defect in undici's **WebSocket client**, and the traced reason all three are unreachable is recorded in `tools/supply-chain/accepted-advisories.json` on two independent grounds: the only consumer of undici in the tree imports `Agent` and `fetch` and never constructs a WebSocket, and the import itself sits behind a runtime check that is false under the JavaScript engine OpenCode actually uses. There is no in-range upgrade — the vulnerable version is pinned two levels up by a package this project does not control.
+Thirteen of the eighteen are the same dependency: `undici` 5.29.0, pulled in through a single chain from one plugin (`smart-title` → `ai` → `@ai-sdk/gateway` → `@ai-sdk/provider-utils` → `undici`). Every one of undici's three high-severity advisories is a defect in undici's **WebSocket client**, and the traced reason all three are unreachable is recorded in `tools/supply-chain/accepted-advisories.json` on two independent grounds: the only consumer of undici in the tree imports `Agent` and `fetch` and never constructs a WebSocket, and the import itself sits behind a runtime check that is false under the JavaScript engine OpenCode actually uses. There is no in-range upgrade — the vulnerable version is pinned two levels up by a package this project does not control.
 
-Two more are `@fastify/busboy`, one of them the allowlisted denial-of-service finding. The remaining two are new and unallowlisted: `seroval` 1.5.6, reached through `@tarquinen/opencode-dcp` → `solid-js` → `seroval`, and both are defects in seroval's `fromJSON()` deserialisation path. They are the reason the audit now reports **FAIL** rather than PASS. A high or critical finding is not something this repository silences with a baseline update — it requires a decision, either moving off the dependency or tracing the vulnerable code path and recording why it is unreachable — and that decision is outstanding as of this review.
+Two more are `@fastify/busboy`, one of them the allowlisted denial-of-service finding. The last two are `seroval` 1.5.6, reached through `@tarquinen/opencode-dcp` → `solid-js` → `seroval`; both are defects in seroval's `fromJSON()` deserialisation path, imported only by `solid-js/web`'s server-rendering entry, which a terminal-UI plugin never loads. Both are traced unreachable on that basis and allowlisted, so every high and critical finding in this population now carries a recorded reason rather than a suppression.
 
 The same audit verifies supply-chain provenance: **210 of 210 packages have verified registry signatures**, 76 carry attestations, and 3 of the 7 pinned plugins publish a SLSA provenance attestation. The remaining four are recorded as a known, accepted residual rather than left undeclared.
 
@@ -365,7 +365,7 @@ The same audit verifies supply-chain provenance: **210 of 210 packages have veri
 |---|---|---|---|---|
 | Shipped dependencies | 0 | 0 | 0 | 0 |
 | Application source code | 0 | 0 | 0 | 0 |
-| Developer tooling (never shipped) | 1 (not accepted) | 5 (four traced unreachable) | 8 | 4 |
+| Developer tooling (never shipped) | 1 (traced unreachable) | 5 (all traced unreachable) | 8 | 4 |
 
 **In the product itself — its own code and every dependency that ships with it — there are no known vulnerabilities at any severity.**
 
