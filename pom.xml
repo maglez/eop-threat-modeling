@@ -61,6 +61,12 @@
                                                    but that is an exploitability argument and
                                                    not grounds to allowlist a CRITICAL when the
                                                    patch release is published.
+              spring-framework 7.0.8   -> 7.0.9    CVE-2026-47884 (CRITICAL). Remote code
+                                                   execution via improper path limitation in
+                                                   XsltView. This one property governs the whole
+                                                   org.springframework family (spring-webmvc
+                                                   among them), reached via
+                                                   spring-boot-starter-web.
 
             DELETE an entry once the Boot parent's own managed version reaches or passes it.
             Left in place they stop being fixes and become a ceiling, holding a library back
@@ -73,6 +79,7 @@
         <jackson-bom.version>3.1.7</jackson-bom.version>
         <log4j2.version>2.25.5</log4j2.version>
         <tomcat.version>11.0.25</tomcat.version>
+        <spring-framework.version>7.0.9</spring-framework.version>
 
         <spotbugs.version>4.9.3.0</spotbugs.version>
         <jacoco.version>0.8.13</jacoco.version>

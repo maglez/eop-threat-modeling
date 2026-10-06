@@ -84,7 +84,13 @@
     "graphify_shortest_path": "allow",
     "graphify_review_delta": "allow",
     "graphify_review_analysis": "allow",
-    "graphify_recommend_commits": "allow"
+    "graphify_recommend_commits": "allow",
+    "lsp": "allow"
+  },
+  "lsp": {
+    "bash": { "disabled": true },
+    "yaml": { "disabled": true },
+    "terraform": { "disabled": true }
   },
   "model": "{env:MODEL_A}",
   "small_model": "{env:MODEL_D}",
