@@ -9,8 +9,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.entity.GameResult;
 import org.maglez.eop.entity.NotFacilitatorException;
 import org.maglez.eop.entity.PlayerBuilder;
 import org.maglez.eop.entity.PlayerNotRecognisedException;
@@ -32,12 +35,26 @@ class EndSessionUseCaseTest {
     private static final Clock FIXED = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final String FACILITATOR_TOKEN = PlayerBuilder.DEFAULT_TOKEN;
 
+    private static final UUID RESULT_ID = UUID.fromString("00000000-0000-7000-8000-000000000001");
+
     private final List<String> order = new ArrayList<>();
     private final RecordingSessionEventPublisher publisher = new RecordingSessionEventPublisher(order);
+    private final InMemoryTrickRepository trickRepository = new InMemoryTrickRepository(order);
+    private final InMemoryGameResultRepository resultRepository = new InMemoryGameResultRepository(order);
+    private final QueuedIdentifierGenerator identifierGenerator = new QueuedIdentifierGenerator(RESULT_ID);
 
     private EndSessionUseCase useCaseFor(final InMemorySessionRepository repository) {
         return new EndSessionUseCase(repository,
-                new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()), publisher, FIXED);
+                new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()), publisher,
+                Optional.empty(), FIXED);
+    }
+
+    private EndSessionUseCase useCasePersisting(final InMemorySessionRepository repository) {
+        return new EndSessionUseCase(repository,
+                new ResolvePlayerUseCase(repository, java.time.Clock.systemUTC()), publisher,
+                Optional.of(new PersistGameResultUseCase(
+                        repository, trickRepository, resultRepository, identifierGenerator, FIXED)),
+                FIXED);
     }
 
     @Test
@@ -90,6 +107,58 @@ class EndSessionUseCaseTest {
 
         assertThat(repository.findById(session.sessionId()).orElseThrow().status())
                 .isEqualTo(SessionStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("records the game result once the session is completed")
+    void shouldRecordTheGameResult() {
+        final var session = aSession().withPlayerCount(3).withStatus(SessionStatus.IN_PROGRESS).build();
+        final var repository = new InMemorySessionRepository(order, session);
+
+        useCasePersisting(repository).execute(session.sessionId(), FACILITATOR_TOKEN);
+
+        assertThat(resultRepository.saved()).isNotNull();
+        assertThat(resultRepository.saved().sessionId()).isEqualTo(session.sessionId());
+    }
+
+    @Test
+    @DisplayName("records the result before announcing the completion")
+    void shouldRecordTheResultBeforeAnnouncing() {
+        final var session = aSession().withPlayerCount(3).withStatus(SessionStatus.IN_PROGRESS).build();
+        final var repository = new InMemorySessionRepository(order, session);
+
+        useCasePersisting(repository).execute(session.sessionId(), FACILITATOR_TOKEN);
+
+        assertThat(order).contains("save");
+        assertThat(order.indexOf("save"))
+                .as("the result must be on the disk before any subscriber is told the game is over")
+                .isLessThan(order.indexOf("publish"));
+    }
+
+    @Test
+    @DisplayName("still completes the session when the result cannot be recorded")
+    void shouldStillCompleteWhenTheResultCannotBeRecorded() {
+        final var session = aSession().withPlayerCount(3).withStatus(SessionStatus.IN_PROGRESS).build();
+        final var repository = new InMemorySessionRepository(order, session);
+        resultRepository.failOnSave();
+
+        final var completed = useCasePersisting(repository).execute(session.sessionId(), FACILITATOR_TOKEN);
+
+        assertThat(completed.status()).isEqualTo(SessionStatus.COMPLETED);
+        assertThat(publisher.published()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("records no result when the caller is refused")
+    void shouldRecordNoResultWhenRefused() {
+        final var session = aSession().withPlayerCount(3).withStatus(SessionStatus.IN_PROGRESS).build();
+        final var repository = new InMemorySessionRepository(order, session);
+
+        assertThatExceptionOfType(NotFacilitatorException.class)
+                .isThrownBy(() -> useCasePersisting(repository)
+                        .execute(session.sessionId(), FACILITATOR_TOKEN + "-1"));
+
+        assertThat(resultRepository.saved()).isNull();
     }
 
     @Test
@@ -146,5 +215,40 @@ class EndSessionUseCaseTest {
 
         assertThat(repository.recordCompletedCalls()).isZero();
         assertThat(publisher.published()).isEmpty();
+    }
+
+    private static final class InMemoryGameResultRepository implements GameResultRepository {
+
+        private final List<String> order;
+        private GameResult saved;
+        private boolean failOnSave;
+
+        private InMemoryGameResultRepository(final List<String> order) {
+            this.order = order;
+        }
+
+        private GameResult saved() {
+            return saved;
+        }
+
+        private void failOnSave() {
+            this.failOnSave = true;
+        }
+
+        @Override
+        public void save(final GameResult result) {
+            if (failOnSave) {
+                throw new IllegalStateException("result store unavailable");
+            }
+            this.saved = result;
+            order.add("save");
+        }
+
+        @Override
+        public Optional<GameResult> findBySessionId(final UUID sessionId) {
+            return saved != null && saved.sessionId().equals(sessionId)
+                    ? Optional.of(saved)
+                    : Optional.empty();
+        }
     }
 }
