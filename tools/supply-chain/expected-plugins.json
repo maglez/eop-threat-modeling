@@ -33,7 +33,7 @@
     "@tarquinen/opencode-dcp": {
       "maintainers": ["tarquinen <dannysmo@gmail.com>"],
       "provenance": true,
-      "note": "Attested. Upstream development has moved to Sleev, so treat an unfixed OpenCode-compatibility break as the trigger for an ADR on replacing it. Shares its publishing account with @tarquinen/opencode-smart-title: one handoff of that account reaches two entries in this roster, and because maintainers are checked per package the two failures would look independent."
+      "note": "Attested. Upstream development has moved to Sleev, so treat an unfixed OpenCode-compatibility break as the trigger for an ADR on replacing it. The publishing account tarquinen previously also published @tarquinen/opencode-smart-title, removed from the roster by EOP-257, so the account now reaches one entry."
     },
     "opencode-supermemory": {
       "maintainers": ["dhravya <dhravyashah@gmail.com>"],
@@ -54,11 +54,6 @@
       "maintainers": ["williamricchiuti <will.ricchiuti@gmail.com>"],
       "provenance": false,
       "note": "No attestation, hand-published by one maintainer at six releases in ten days, and the most privileged plugin loaded: it spawns agents, writes state under .opencode/goals/ and reads whole sessions. Blueprint 12.8 names it the least-verifiable, most-privileged entry in the roster."
-    },
-    "@tarquinen/opencode-smart-title": {
-      "maintainers": ["tarquinen <dannysmo@gmail.com>"],
-      "provenance": false,
-      "note": "No attestation, eight releases in five weeks, and the same publishing account as @tarquinen/opencode-dcp -- see that entry. It is also the one hole in this repository's exact-pinning guarantee: its dependency @tarquinen/opencode-auth-provider resolves the Bedrock SDK by running 'bun add --force --exact @ai-sdk/amazon-bedrock@latest' into opencode's cache if a bundled import fails, so an unpinned package can be fetched at runtime on the first title call. That transitive install is invisible to this script, which only reads the direct pins in .opencode/opencode.json -- do NOT add opencode-auth-provider here, because a baseline entry with no matching spec is itself reported as roster drift. Accepted residual, recorded in Blueprint 12.9."
     }
   }
 }

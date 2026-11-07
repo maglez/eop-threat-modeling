@@ -269,45 +269,64 @@ is spent, and citing this section as a live control is now wrong.*
   custom provider block in `.opencode/opencode.json`. That block was deleted
   when the project moved to OpenCode Zen, which is a built-in provider
   (id `opencode`) requiring no SDK dependency and no endpoint env var.
-- **`npm audit` residual: 0 critical / 1 high / 1 moderate / 7 low, carrying
-  14 distinct advisories** — *measured 2026-08-20 against the seven exact pins
-  now current. It supersedes a same-day snapshot of 0/0/0/4 taken against the
-  six pins that preceded `@tarquinen/opencode-smart-title`, which in turn
-  superseded a 2026-07-27 snapshot of 5 high / 4 low.* Read the counts for what
-  they are before drawing a conclusion: npm's `metadata.vulnerabilities` counts
-  **packages at their worst severity**, not advisories, which is why one "high"
-  package carries three high advisories and why 9 packages carry 14 findings.
-  The residual splits into two groups, and only the first is gated.
-  1. **Three high advisories against `undici@5.29.0`, allowlisted by ID.**
-     [GHSA-vrm6-8vpv-qv8q](https://github.com/advisories/GHSA-vrm6-8vpv-qv8q),
-     [GHSA-v9p9-hfj2-hcw8](https://github.com/advisories/GHSA-v9p9-hfj2-hcw8)
-     and [GHSA-vxpw-j846-p89q](https://github.com/advisories/GHSA-vxpw-j846-p89q)
-     arrived with smart-title, through `ai@^5.0.98` →
-     `@ai-sdk/gateway@2.0.137` → `@ai-sdk/provider-utils@3.0.32` →
-     `undici ^5.29.0`. **There is no in-range fix**: `3.0.32` is the newest
-     `3.x` and wants that undici range, the gateway pin on it is *exact* so npm
-     cannot lift it, and the `ai` range belongs to the plugin's own
-     `package.json` rather than to us. All three defects are in undici's
-     **WebSocket client**, which is unreachable here on two independent
-     grounds — the only consumer destructures `{ Agent, fetch }` and never
-     `WebSocket`, and the `createRequire(…)("undici")` that would load it sits
-     behind an `isNodeRuntime()` test of `process.versions.bun == null`, false
-     because OpenCode runs plugins under Bun. Recorded with that trace in
-     `tools/supply-chain/accepted-advisories.json` and gated against it; see
-     Blueprint §12.9.
-  2. **The moderate and the sevens lows are ungated and unchanged in kind.**
-     They are the pre-existing `@babel/core` "Arbitrary File Read via
-     `sourceMappingURL` Comment" chain — reached through
-     `@tarquinen/opencode-dcp` → `@opentui/solid` → `@opencode-ai/plugin`,
-     whose only `fixAvailable` is a **downgrade** to
-     `@tarquinen/opencode-dcp@3.1.12` flagged `isSemVerMajor`, i.e. giving up
-     DCP and its OpenTUI runtime — plus undici's own HTTP-layer findings
-     (request smuggling, CRLF injection, `Set-Cookie` and keep-alive) and one
-     `@ai-sdk/provider-utils` resource-consumption advisory. Accepted on the
-     same three grounds as before: no forward fix; exploitation needs
-     untrusted input that these build-time paths never see; and none of it is
-     a runtime dependency of the shipped Java application, which has no npm
-     dependencies at all.
+- **`npm audit` residual: 3 critical / 8 high / 6 moderate / 1 low, carrying
+  13 distinct advisories** — *measured 2026-11-07 against the six exact pins
+  now current (EOP-257/258/259). It supersedes a 2026-08-20 snapshot of
+  0/1/1/7 carrying 14 distinct advisories against the seven pins that
+  included `@tarquinen/opencode-smart-title`, removed by EOP-257 — that
+  removal took the package count from 210 to 152 and deleted the four gated
+  advisories that arrived with it.* Read the counts for what they are before
+  drawing a conclusion: npm's `metadata.vulnerabilities` counts **packages at
+  their worst severity**, not advisories, which is why one "high" package
+  carries three high advisories. The residual splits into two groups, and only
+  the first is gated.
+  1. **Nine high/critical advisories, allowlisted by ID.**
+     **Five against `seroval@1.5.6`** — one critical
+     ([GHSA-p6vx-979v-rg4c](https://github.com/advisories/GHSA-p6vx-979v-rg4c),
+     fromJSON() Promise thenable assimilation) and four high
+     ([GHSA-jp82-f5mq-hwhp](https://github.com/advisories/GHSA-jp82-f5mq-hwhp),
+     [GHSA-7rv5-mrxv-xcr9](https://github.com/advisories/GHSA-7rv5-mrxv-xcr9),
+     [GHSA-97r2-qh9m-474h](https://github.com/advisories/GHSA-97r2-qh9m-474h),
+     [GHSA-wp97-x4hv-qvhp](https://github.com/advisories/GHSA-wp97-x4hv-qvhp)) —
+     arrived through `@tarquinen/opencode-dcp@3.1.15` → `solid-js@1.9.12` →
+     `seroval ~1.5.4`. **There is no in-range fix**: DCP 3.2.0's
+     `solid-js ^1.9.12` range admits the fixed solid-js 1.9.16+ (seroval
+     ~1.6.8), but `@opentui/solid@0.4.5` — the version DCP 3.2.0's `^0.4.5`
+     resolves — peer-declares solid-js exactly 1.9.12, and a scratch install
+     confirmed resolution keeps seroval 1.5.6 (EOP-258). All five defects are
+     in seroval's **deserialisation path**, unreachable here because seroval is
+     imported only by `solid-js/web/dist/server.js`, the SSR entry, which the
+     terminal-UI tree never loads.
+     **Three highs against `toml@4.3.0`** —
+     [GHSA-4qx8-w7c3-pj3p](https://github.com/advisories/GHSA-4qx8-w7c3-pj3p),
+     [GHSA-9j65-hcg3-gc64](https://github.com/advisories/GHSA-9j65-hcg3-gc64),
+     [GHSA-9qmh-m7c6-f92p](https://github.com/advisories/GHSA-9qmh-m7c6-f92p) —
+     arrived through `@opencode-ai/plugin@1.19.5` → `effect@4.0.0-beta.83` →
+     `toml ^4.1.1`. **No fixed release exists**: the newest plugin and the
+     newest effect 4.x both still declare a vulnerable range (≤5.0.0 covers
+     every 4.x) (EOP-259). All three are `toml.parse()` DoS defects,
+     unreachable because toml is required only by
+     `effect/dist/unstable/cli/Primitive.js:353`, which nothing outside
+     `effect/` reaches.
+     **One high against `zod`** —
+     [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5),
+     memory exhaustion while validating oversized constrained collections —
+     via `@opencode-ai/plugin@1.19.5` pinning `zod@4.1.8` exactly and
+     `opencode-goal-plugin@0.8.1` pinning `zod@4.4.3` exactly. A newer
+     goal-plugin does declare a fixed zod, but the root `zod@4.1.8` node
+     remains, so the advisory would keep being reported (EOP-259).
+     Unreachable because no schema-validation call exists in the tree:
+     `tool.schema = z` constructs only, goal-plugin's import is dead, and the
+     only parses present are `JSON.parse` and `flagSpec.parse`. All nine are
+     recorded with their traces in
+     `tools/supply-chain/accepted-advisories.json` and gated against it.
+  2. **The moderates and the one low are ungated.** They are the
+     `@babel/core` low plus `glob`/`minimatch` moderates, and one seroval
+     moderate (GHSA-9wx9-5pv9-3349) sharing the SSR-only trace above.
+     Accepted on the same three grounds as before: no forward fix;
+     exploitation needs untrusted input that these build-time paths never
+     see; and none of it is a runtime dependency of the shipped Java
+     application, which has no npm dependencies at all.
 
 > **This check now runs itself: `tools/supply-chain/audit-plugins.sh`, wired
 > into CI as the non-required `supply-chain` job.** Reproduce the figures above
@@ -376,31 +395,35 @@ is spent, and citing this section as a live control is now wrong.*
 > message and file. Three further checks address that as far as anything can,
 > and all three are in the script: **maintainer continuity** — the loudest
 > single compromise signal is an account handoff, and every pinned package's
-> maintainer set is unchanged; **registry signatures** — 210 of 210 verified;
-> and **SLSA provenance attestations** — 76 packages carry them, but only
-> **three of the seven plugins** do (`@tarquinen/opencode-dcp`,
-> `opencode-supermemory`, `@nick-vi/opencode-type-inject`). The four without
-> are `opencode-vibeguard`, `opencode-scheduler`, `opencode-goal-plugin` and
-> `@tarquinen/opencode-smart-title`.
+> maintainer set is unchanged; **registry signatures** — 152 of 152 verified;
+> and **SLSA provenance attestations** — 52 packages carry them, but only
+> **three of the six plugins** do (`@tarquinen/opencode-dcp`,
+> `opencode-supermemory`, `@nick-vi/opencode-type-inject`). The three
+> without are `opencode-vibeguard`, `opencode-scheduler` and
+> `opencode-goal-plugin`.
 > Correcting an earlier version of this note: goal-plugin is **not** uniquely
-> unattested, and the three it shares that with are uncomfortable company —
+> unattested, and the two it shares that with are uncomfortable company —
 > `opencode-vibeguard` is the secret-redaction plugin, so the component asked
 > to keep credentials out of prompts is itself among the least verifiable,
-> `opencode-scheduler` writes launchd/systemd units and therefore has the most
-> persistent reach outside the editor process, and
-> `@tarquinen/opencode-smart-title` reads every message of every session in
-> order to title it. State this as *less to verify
+> and `opencode-scheduler` writes launchd/systemd units and therefore has the
+> most persistent reach outside the editor process. (`@tarquinen/opencode-smart-title`
+> used to head this list — it read every message of every session in order
+> to title it — until EOP-257 removed it.) State this as *less to verify
 > against*, never as evidence of a problem: nothing suspicious has been found
 > in any of them. And provenance only ever proves a tarball came from the named
 > repository's CI — never that the repository's code is benign.
 >
-> **Maintainer continuity is now a weaker signal than the package count
-> suggests, because one npm account holds two of the seven pins.**
-> `@tarquinen/opencode-dcp` and `@tarquinen/opencode-smart-title` are published
-> by the same account (`tarquinen <dannysmo@gmail.com>`), so a single handoff or
-> compromise reaches two plugins at once — and because the script checks
-> maintainers **per package**, it would report that as two independent findings
-> rather than as one event. Both baseline notes say so; read them together.
+> **Maintainer continuity was a weaker signal than the package count
+> suggested, because one npm account held two of the seven pins — until
+> EOP-257 reduced it to one.**
+> `@tarquinen/opencode-dcp` and the since-removed
+> `@tarquinen/opencode-smart-title` were published by the same account
+> (`tarquinen <dannysmo@gmail.com>`), so a single handoff or compromise
+> reached two plugins at once — and because the script checks maintainers
+> **per package**, it would report that as two independent findings rather
+> than as one event. With smart-title gone the account holds one pin, and
+> the DCP baseline note records that history; the weaker-signal caveat is
+> now historical rather than live.
 
 >
 > **Plugin installation does not run npm lifecycle scripts. Verified, not
@@ -423,19 +446,18 @@ is spent, and citing this section as a live control is now wrong.*
 > above are about *who published this* rather than about install-time
 > execution.
 >
-> **One plugin can fetch an unpinned package at runtime, and none of the above
-> would see it.** `@tarquinen/opencode-smart-title` depends on
-> `@tarquinen/opencode-auth-provider@0.1.7`, which reaches Bedrock by
+> **The one plugin that could fetch an unpinned package at runtime is gone.**
+> `@tarquinen/opencode-smart-title` depended on
+> `@tarquinen/opencode-auth-provider@0.1.7`, which reached Bedrock by
 > `import("@ai-sdk/amazon-bedrock")` — a package it does not declare — and on
-> failure falls through to `bun add --force --exact --cwd <cache> <pkg>@latest`.
-> So a package resolved at *whatever `latest` is that day* may be installed into
-> OpenCode's cache on a machine whose entire declared plugin roster is
-> exact-pinned. `audit-plugins.sh` reads the `plugin` array of
-> `.opencode/opencode.json` and cannot observe this, so it is the one hole in
-> the exact-pinning guarantee. It is reached only on the first Bedrock title
-> call and only if the bundled import fails; which way that import resolves is
-> unverified. Accepted deliberately rather than overlooked — Blueprint §12.9
-> holds the file and line citations.
+> failure fell through to `bun add --force --exact --cwd <cache> <pkg>@latest`,
+> so a package resolved at *whatever `latest` is that day* could be installed
+> into OpenCode's cache on a machine whose entire declared plugin roster was
+> exact-pinned, invisibly to `audit-plugins.sh`. It was the one hole in the
+> exact-pinning guarantee, and EOP-257 closed it by removing the plugin —
+> no remaining pin fetches anything unpinned at runtime, as far as was
+> verified at that date. Blueprint §12.9 holds the removal record and the
+> file and line citations.
 >
 > Drop each residual entry as its upstream fix lands, and delete an allowlisted
 > advisory ID the moment the script reports it as no longer present.
