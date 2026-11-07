@@ -180,7 +180,7 @@ cat > "$workdir/fixture-missing-metadata-vulns.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
-# Fixture 3: clean audit — no findings, all six allowlisted GHSAs present
+# Fixture 3: clean audit — no findings, all fifteen allowlisted GHSAs present
 # in the report so the staleness check passes.
 # Shape mirrors a real npm audit --json output with zero vulnerabilities.
 # ---------------------------------------------------------------------------
@@ -224,6 +224,28 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "cwe": ["CWE-400"],
           "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
           "range": ">=6.21.0 <6.21.1"
+        },
+        {
+          "source": 1099530,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici vulnerable to TLS certificate validation bypass via dropped tls options in Agent",
+          "url": "https://github.com/advisories/GHSA-2m5v-pch6-74hx",
+          "severity": "high",
+          "cwe": ["CWE-295"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": ">=4.0.0 <6.29.1"
+        },
+        {
+          "source": 1099531,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici vulnerable to Denial of Service via TLS 1.2 certificate-changing renegotiation",
+          "url": "https://github.com/advisories/GHSA-qrxm-fqhp-jwvm",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": ">=4.2.1 <6.29.1"
         }
       ],
       "effects": [],
@@ -277,12 +299,109 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "cwe": ["CWE-400"],
           "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
           "range": "<=1.6.2"
+        },
+        {
+          "source": 1099532,
+          "name": "seroval",
+          "dependency": "seroval",
+          "title": "Seroval: Deserialization invokes attacker-chosen callables: AsyncIteratorFactoryInstance calls source.on(listener) without type check",
+          "url": "https://github.com/advisories/GHSA-7rv5-mrxv-xcr9",
+          "severity": "high",
+          "cwe": ["CWE-94"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=1.6.7"
+        },
+        {
+          "source": 1099533,
+          "name": "seroval",
+          "dependency": "seroval",
+          "title": "Seroval: fromJSON deserializer trusts node-supplied array length and sequence doneAt (unauthenticated event-loop DoS)",
+          "url": "https://github.com/advisories/GHSA-97r2-qh9m-474h",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=1.6.7"
+        },
+        {
+          "source": 1099534,
+          "name": "seroval",
+          "dependency": "seroval",
+          "title": "Seroval `fromJSON`/`fromCrossJSON` denial of service via unvalidated array node length",
+          "url": "https://github.com/advisories/GHSA-wp97-x4hv-qvhp",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": ">=1.4.1 <=1.6.7"
         }
       ],
       "effects": [],
-      "range": ">=0.12.0 <=1.6.2",
+      "range": ">=0.12.0 <=1.6.7",
       "nodes": ["node_modules/seroval"],
       "fixAvailable": true
+    },
+    "toml": {
+      "name": "toml",
+      "severity": "high",
+      "via": [
+        {
+          "source": 1099535,
+          "name": "toml",
+          "dependency": "toml",
+          "title": "toml-node: Quadratic-complexity DoS via many array-of-tables headers in toml.parse()",
+          "url": "https://github.com/advisories/GHSA-4qx8-w7c3-pj3p",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=5.0.0"
+        },
+        {
+          "source": 1099536,
+          "name": "toml",
+          "dependency": "toml",
+          "title": "toml-node: Quadratic-complexity DoS via long dotted keys or table paths in toml.parse()",
+          "url": "https://github.com/advisories/GHSA-9j65-hcg3-gc64",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=5.0.0"
+        },
+        {
+          "source": 1099537,
+          "name": "toml",
+          "dependency": "toml",
+          "title": "toml-node: Uncontrolled resource consumption (CPU DoS) via unbounded-length integer literals in toml.parse()",
+          "url": "https://github.com/advisories/GHSA-9qmh-m7c6-f92p",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<=5.0.0"
+        }
+      ],
+      "effects": [],
+      "range": "<=5.0.0",
+      "nodes": ["node_modules/toml"],
+      "fixAvailable": false
+    },
+    "zod": {
+      "name": "zod",
+      "severity": "high",
+      "via": [
+        {
+          "source": 1099538,
+          "name": "zod",
+          "dependency": "zod",
+          "title": "Zod can exhaust memory while validating oversized constrained collections",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+          "severity": "high",
+          "cwe": ["CWE-400"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+          "range": "<4.6.6"
+        }
+      ],
+      "effects": [],
+      "range": "<4.6.6",
+      "nodes": ["node_modules/zod", "node_modules/opencode-goal-plugin/node_modules/zod"],
+      "fixAvailable": false
     }
   },
   "metadata": {
@@ -290,9 +409,9 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 5,
+      "high": 14,
       "critical": 1,
-      "total": 6
+      "total": 15
     },
     "dependencies": {
       "prod": 7,
@@ -376,7 +495,7 @@ run_advisory_check \
 echo
 echo "--- Valid audit documents ---"
 run_advisory_check \
-    "all six allowlisted GHSAs present: exits 0 (clean)" \
+    "all fifteen allowlisted GHSAs present: exits 0 (clean)" \
     "$workdir/fixture-clean-with-allowlisted.json" \
     0
 
