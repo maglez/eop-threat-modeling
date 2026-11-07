@@ -57,8 +57,8 @@ docker build -t eop-ui:e2e --build-arg VITE_GAME_SCREEN_ENABLED=true ui
 
 Two things about the second command are load-bearing.
 
-**The `--build-arg` is required, not optional.** `ui/Dockerfile` defaults all three
-`VITE_*` feature flags to `false` (fail-closed, ADR-037), and these flags are
+**The `--build-arg` is required, not optional.** `ui/Dockerfile` defaults both
+remaining `VITE_*` feature flags to `false` (fail-closed, ADR-037), and these flags are
 resolved at *build* time and substituted into the bundle — there is no runtime
 environment variable that can turn the game screen on afterwards. An image built
 without it serves an application whose game screen never renders, so every scenario
@@ -110,8 +110,8 @@ in [ADR-072](../docs/adr/ADR-072-e2e-ci-integration.md).
 Three things about it are worth knowing before you change anything in this directory.
 
 **CI does not build the images and does not own the compose lifecycle the way you do
-locally.** The `image` job builds `eop-threat-modeling:ci` and `eop-ui:ci` (with all
-three `VITE_*` flags `true`), `docker save | gzip`s them into a `ci-images` artifact, and
+locally.** The `image` job builds `eop-threat-modeling:ci` and `eop-ui:ci` (with both
+remaining `VITE_*` flags `true`), `docker save | gzip`s them into a `ci-images` artifact, and
 the `e2e` job loads that artifact so it tests the artefact the pipeline built rather than
 a second build of its own. It then starts the stack itself with `APP_IMAGE`/`UI_IMAGE`
 pointed at those tags and sets **`E2E_REUSE_STACK=true`**, so `global-setup.ts` skips its

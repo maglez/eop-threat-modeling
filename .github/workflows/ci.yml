@@ -204,14 +204,12 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: eop-ui:ci
-          # All three are build-time flags (ADR-037). The ARG defaults in
+          # Both are build-time flags (ADR-037). The ARG defaults in
           # ui/Dockerfile are false (fail-closed); these explicit overrides
-          # enable the game screen, the card magnifier and the follow-suit hint
-          # in the CI-built and deployed image. Change any to false to ship that
-          # feature dark.
+          # enable the game screen and the follow-suit hint in the CI-built
+          # and deployed image. Change any to false to ship that feature dark.
           build-args: |
             VITE_GAME_SCREEN_ENABLED=true
-            VITE_CARD_MAGNIFIER_ENABLED=true
             VITE_FOLLOW_SUIT_HINT_ENABLED=true
           cache-from: type=gha,scope=ui
           cache-to: type=gha,mode=max,scope=ui

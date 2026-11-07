@@ -21,8 +21,8 @@
 #   docker build -t eop-ui:e2e --build-arg VITE_GAME_SCREEN_ENABLED=true ui
 #
 # Note the UI image tag differs from compose.app.yml's `eop-ui:local` and is NOT
-# interchangeable with it. ui/Dockerfile defaults all three VITE_* feature flags
-# to false (fail-closed, ADR-037), so an image built without that --build-arg
+# interchangeable with it. ui/Dockerfile defaults both remaining VITE_*
+# feature flags to false (fail-closed, ADR-037), so an image built without that --build-arg
 # ships with the game screen absent and every gameplay scenario would fail on a
 # missing element rather than on a real defect. A distinct tag makes that
 # difference visible in `docker images` instead of hiding it inside a layer.

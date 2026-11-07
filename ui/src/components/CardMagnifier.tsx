@@ -26,11 +26,12 @@ export const LENS_DIAMETER_PX = 100;
 export const LENS_BORDER_PX = 2;
 
 /**
- * Magnification factor. 2x by explicit product decision — the original request
- * said 3x and was revised down, because at 3x a 100px lens over an 80px card
- * shows so little of the card that the player loses their place.
+ * Magnification factor. 4x at the user's request after playing with 2x — they
+ * found 2x insufficient to read the card text. Higher zoom shows less context
+ * per lens (a 100px lens at 4x covers 25px of the card), which is the
+ * trade-off the user accepted.
  */
-export const LENS_ZOOM = 2;
+export const LENS_ZOOM = 4;
 
 /** A point in the card container's border box, in CSS pixels. */
 export interface LensPoint {
@@ -58,15 +59,17 @@ export interface CardMagnifierState {
  * Owns one card's lens state. Call it once per card — each card needs its own
  * container ref so that "tap outside" can tell this card from its neighbours.
  *
- * When `enabled` is false every handler is inert and `point` stays `null`, so a
- * caller that renders the lens only when `point !== null` produces markup
- * identical to the pre-EOP-145 DOM. That is what makes the feature flag a real
- * off switch rather than a hidden overlay.
+ * The magnifier is always on. It was originally gated by the build-time
+ * `VITE_CARD_MAGNIFIER_ENABLED` flag (EOP-145), but that left the lens inert
+ * in every run path that did not explicitly pass the build argument — a plain
+ * `docker build` (the Dockerfile default is `false`) and `npm run dev` from a
+ * `.env.local` without the entry — so players who built or ran the game in the
+ * documented way never saw a lens on hover. Per `feature-flags.md` a stable
+ * feature's flag is removed, so the handlers below are unconditional.
  *
- * @param enabled whether the magnifier feature is switched on
  * @return the lens state and the handlers to wire onto the card container
  */
-export function useCardMagnifier(enabled: boolean): CardMagnifierState {
+export function useCardMagnifier(): CardMagnifierState {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [point, setPoint] = useState<LensPoint | null>(null);
   const [pinned, setPinned] = useState(false);
@@ -80,18 +83,18 @@ export function useCardMagnifier(enabled: boolean): CardMagnifierState {
     // Only a mouse tracks continuously. A touch pointer emits pointermove too,
     // but following a finger would put the lens underneath it where it cannot
     // be read, which is why touch pins instead (see onPointerDown).
-    if (!enabled || pinned || e.pointerType !== 'mouse') return;
+    if (pinned || e.pointerType !== 'mouse') return;
     const box = e.currentTarget.getBoundingClientRect();
     setPoint({ x: e.clientX - box.left, y: e.clientY - box.top });
-  }, [enabled, pinned]);
+  }, [pinned]);
 
   const onPointerLeave = useCallback(() => {
-    if (!enabled || pinned) return;
+    if (pinned) return;
     setPoint(null);
-  }, [enabled, pinned]);
+  }, [pinned]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
-    if (!enabled || e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse') return;
     if (pinned) {
       hide();
       return;
@@ -99,7 +102,7 @@ export function useCardMagnifier(enabled: boolean): CardMagnifierState {
     const box = e.currentTarget.getBoundingClientRect();
     setPoint({ x: e.clientX - box.left, y: e.clientY - box.top });
     setPinned(true);
-  }, [enabled, pinned, hide]);
+  }, [pinned, hide]);
 
   // A tap anywhere outside this card dismisses its pinned lens. Capture phase
   // matters: tapping a *second* card must dismiss the first one's lens before
@@ -114,11 +117,6 @@ export function useCardMagnifier(enabled: boolean): CardMagnifierState {
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     return () => { document.removeEventListener('pointerdown', onDocumentPointerDown, true); };
   }, [pinned, hide]);
-
-  // Switching the feature off must not strand a lens that is already on screen.
-  useEffect(() => {
-    if (!enabled) hide();
-  }, [enabled, hide]);
 
   return { point, containerRef, onPointerMove, onPointerLeave, onPointerDown, hide };
 }
