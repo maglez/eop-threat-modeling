@@ -17,7 +17,7 @@
 
 ## Definition of Done
 
-- [ ] Code follows Clean Architecture (dependencies point inward)
+- [ ] Code follows Hexagonal Architecture (dependencies point inward)
 - [ ] Domain layer has zero framework imports
 - [ ] Unit tests pass and cover new logic (sub-second execution)
 - [ ] API contract updated in `docs/api/openapi.yml` if applicable

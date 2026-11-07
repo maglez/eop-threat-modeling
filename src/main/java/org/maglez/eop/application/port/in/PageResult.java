@@ -7,7 +7,7 @@ import java.util.function.Function;
 /**
  * One page of results, with enough metadata for a caller to page through.
  *
- * <p>Deliberately not Spring's {@code Page}. Beyond the Clean Architecture
+ * <p>Deliberately not Spring's {@code Page}. Beyond the Hexagonal Architecture
  * reason, Spring Boot does not support serialising {@code PageImpl} as a stable
  * JSON contract, so the web layer needs its own envelope regardless.
  *

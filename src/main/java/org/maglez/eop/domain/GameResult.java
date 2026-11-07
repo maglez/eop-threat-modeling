@@ -22,8 +22,8 @@ import java.util.UUID;
  *
  * <p>The STRIDE breakdown per player is <em>not</em> stored here. It is derived on demand from
  * the trick history by {@code GetLeaderboardPort}, per ADR-030. That type is named in prose
- * rather than linked because it lives in the use-case layer, and an entity may not import
- * outwards; see .opencode/rules/clean-architecture.md.
+ * rather than linked because it lives in the application layer, and an entity may not import
+ * outwards; see .opencode/rules/hexagonal-architecture.md.
  *
  * <p>Pure domain type: no Spring, no Jakarta, no persistence annotations.
  *

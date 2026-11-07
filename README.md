@@ -96,10 +96,10 @@ ui/                                   # Front end. Its own build, its own image,
 └── Dockerfile                         #   Node build → Caddy runtime, unprivileged
 ```
 
-The layering is not decoration. `entity` and `usecase` compile without Spring or
-Jakarta on the classpath; everything framework-shaped is under `adapter` or
-`config`. A dependency pointing the other way is a review failure, not a style
-preference — see [`.opencode/rules/clean-architecture.md`](.opencode/rules/clean-architecture.md).
+The layering is not decoration. `domain` and `application` compile without Spring or
+Jakarta on the classpath; everything framework-shaped is under `inbound`,
+`outbound` or `config`. A dependency pointing the other way is a review failure, not a style
+preference — see [`.opencode/rules/hexagonal-architecture.md`](.opencode/rules/hexagonal-architecture.md).
 
 ## Documentation
 

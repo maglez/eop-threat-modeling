@@ -2,9 +2,9 @@
 
 ## Default Architecture: Hexagonal Architecture (ports & adapters)
 
-All code must follow Hexagonal Architecture — dependencies point inward: `domain` and `application` (ports + services) know nothing of adapters; `inbound`/`outbound` adapters implement ports; `config` is the composition root. Cross-boundary data uses DTOs, not domain entities. See `.opencode/rules/clean-architecture.md` (retained filename; content is the Hexagonal rule set) for the full rule set.
+All code must follow Hexagonal Architecture — dependencies point inward: `domain` and `application` (ports + services) know nothing of adapters; `inbound`/`outbound` adapters implement ports; `config` is the composition root. Cross-boundary data uses DTOs, not domain entities. See `.opencode/rules/hexagonal-architecture.md` for the full rule set.
 
-Layers: Entities → Use Cases → Interface Adapters → Frameworks & Drivers
+Layers: Domain → Application (ports & services) → Inbound/Outbound adapters → Frameworks & drivers (wired in `config`)
 
 ## Security by Design
 
@@ -57,7 +57,7 @@ This project uses a multi-agent team defined in `.opencode/agents/`. Thirteen de
 - `@performance-engineer` — benchmarks and load testing
 
 Plus four advisory experts, with no Jira or GitHub access — invoke them by name for a second opinion:
-- `@expert-uncle-bod` — software craftsmanship, SOLID, Clean Architecture
+- `@expert-uncle-bod` — software craftsmanship, SOLID, Hexagonal Architecture
 - `@expert-dave-farley` — continuous delivery, TDD, fast feedback
 - `@expert-kent-beck` — TDD, XP, incremental refactoring
 - `@expert-alex-xu` — ultra-high-scale distributed systems and storage

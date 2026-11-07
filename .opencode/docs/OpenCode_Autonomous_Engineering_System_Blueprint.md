@@ -147,7 +147,7 @@ To eliminate systematic blind spots, authoring agents (who write code and infras
 | @expert-alex-xu | Distributed Systems & System Design | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 | @expert-dave-farley | Continuous Delivery & TDD | `{env:MODEL_B}` | Anthropic | Advisory | 0.1 |
 | @expert-kent-beck | TDD & XP | `{env:MODEL_B}` | Anthropic | Advisory | 0.2 |
-| @expert-uncle-bod | SOLID & Clean Architecture | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
+| @expert-uncle-bod | SOLID & Hexagonal Architecture | `{env:MODEL_A}` | Anthropic | Advisory | 0.2 |
 
 > **Model References:** The `Model` column shows the abstract name (`{env:MODEL_X}`). Agent files carry **no** `model:` frontmatter — the assignment lives in the `agent` block of `.opencode/opencode.json`, which is the single authoritative table, and each entry resolves its `{env:MODEL_X}` placeholder from `.env` at startup. A key in that block which no longer matches an agent filename silently drops that agent to the global default (`{env:MODEL_A}`) with no error, so the block must be re-checked whenever an agent is renamed. The `Family` column lists the vendor when using OpenCode Zen; it changes when switching providers.
 

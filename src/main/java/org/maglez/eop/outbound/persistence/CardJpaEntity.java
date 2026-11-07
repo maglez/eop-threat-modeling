@@ -17,7 +17,7 @@ import org.maglez.eop.domain.StrideCategory;
  * <p>Separate from the domain {@link Card} on purpose. The domain type is an
  * immutable record with no framework imports; JPA needs a mutable class with a
  * no-argument constructor and its own annotations. Merging the two would drag
- * Jakarta into the domain, which is exactly the dependency Clean Architecture
+ * Jakarta into the domain, which is exactly the dependency Hexagonal Architecture
  * forbids.
  *
  * <p>Package private: nothing outside this adapter should be able to name it.
