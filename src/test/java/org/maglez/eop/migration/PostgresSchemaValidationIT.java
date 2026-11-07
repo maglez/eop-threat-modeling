@@ -43,7 +43,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * rendering mistake would have reached production as a startup failure.
  *
  * <p>Two differences from the H2 analogue,
- * {@code org.maglez.eop.adapter.persistence.MappedSchemaValidationIntegrationTest}, are deliberate.
+ * {@code org.maglez.eop.outbound.persistence.MappedSchemaValidationIntegrationTest}, are deliberate.
  * First, the entity list is read from the JPA metamodel rather than hardcoded in a
  * {@code @ValueSource}, so it cannot drift as entities are added — with a floor asserted below so a
  * broken metamodel cannot make the test vacuously pass. Second, the container is wired in with

@@ -12,6 +12,11 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.application.port.in.GetScorePort;
+import org.maglez.eop.domain.Hands;
+import org.maglez.eop.domain.NoTamperingCardDealtException;
+
+import org.maglez.eop.domain.Trick;
 
 /**
  * Guards prose about the deck against arithmetic that the deck size has outgrown (EOP-93).
@@ -235,7 +240,7 @@ class DeckArithmeticClaimsTest {
 
         assertThat(offences)
                 .as("Java prose states a superseded deck size. The deck holds %d cards (ADR-041); %s are historical. "
-                        + "Javadoc in Trick, Hands, SeatOrder, GetScoreUseCase and NoTamperingCardDealtException all "
+                        + "Javadoc in Trick, Hands, SeatOrder, GetScorePort and NoTamperingCardDealtException all "
                         + "went stale this way and the build stayed green, as did a GlobalExceptionHandlerTest fixture "
                         + "that constructed the exception with a deck of 78. Only %s may state a superseded size.",
                         CURRENT_DECK_SIZE, SUPERSEDED_DECK_SIZES, EXEMPT_FILES)

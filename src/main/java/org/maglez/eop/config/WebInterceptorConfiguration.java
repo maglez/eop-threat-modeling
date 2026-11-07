@@ -1,6 +1,6 @@
 package org.maglez.eop.config;
 
-import org.maglez.eop.adapter.web.ReadRateLimitInterceptor;
+import org.maglez.eop.inbound.web.ReadRateLimitInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;

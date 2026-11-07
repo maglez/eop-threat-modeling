@@ -1,1 +1,1 @@
-org.maglez.eop.adapter.web.RecordingInetAddressResolverProvider
+org.maglez.eop.inbound.web.RecordingInetAddressResolverProvider

@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+
 /**
  * Fails the build when the application's HTTP surface drifts from the hand-authored contract in
  * {@code docs/api/openapi.yml} (EOP-95, ADR-054).

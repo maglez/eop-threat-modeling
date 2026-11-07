@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+
 /**
  * Fails the build if the PostgreSQL image the integration tests run against and the image the two Compose
  * stacks run disagree — on the tag, on the digest, or on either being absent.

@@ -14,6 +14,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import org.maglez.eop.domain.ConnectionStatus;
+import org.maglez.eop.domain.PlayerRole;
+
+import org.maglez.eop.domain.SessionStatus;
+import org.maglez.eop.domain.StrideCategory;
+
 /**
  * Holds the three declarations of each shared enum in agreement: the Java entity, the OpenAPI
  * schema, and the TypeScript mirror in {@code ui/src/api.ts} (EOP-105).
@@ -57,7 +63,7 @@ class EnumMirrorParityTest {
     private static final Path API_CLIENT = Path.of("ui", "src", "api.ts");
 
     /** Package directory holding the enums under test. */
-    private static final Path ENTITY_DIRECTORY = Path.of("src", "main", "java", "org", "maglez", "eop", "entity");
+    private static final Path DOMAIN_DIRECTORY = Path.of("src", "main", "java", "org", "maglez", "eop", "domain");
 
     /** Matches a Java block comment, so that a {@code @link} to a constant is not read as a declaration. */
     private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
@@ -88,7 +94,7 @@ class EnumMirrorParityTest {
     /**
      * The enums declared in all three artefacts, and where each declaration lives.
      *
-     * @param javaEnum simple name of the Java enum in {@code org.maglez.eop.entity}
+     * @param javaEnum simple name of the Java enum in {@code org.maglez.eop.domain}
      * @param openApiSchema key of the schema under {@code components.schemas} in the contract
      * @param typeScriptArray name of the {@code as const} array in {@code ui/src/api.ts}
      */
@@ -210,7 +216,7 @@ class EnumMirrorParityTest {
      * @throws IllegalArgumentException if the file declares no such enum, or no constants
      */
     private static List<String> javaConstants(final String simpleName) throws IOException {
-        final Path source = ENTITY_DIRECTORY.resolve(simpleName + ".java");
+        final Path source = DOMAIN_DIRECTORY.resolve(simpleName + ".java");
         final String stripped = LINE_COMMENT
                 .matcher(BLOCK_COMMENT.matcher(Files.readString(source)).replaceAll(" "))
                 .replaceAll(" ");

@@ -9,24 +9,25 @@ import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.adapter.security.SecureRandomDeckShuffler;
-import org.maglez.eop.adapter.web.EndSessionController;
-import org.maglez.eop.adapter.web.ScoreController;
-import org.maglez.eop.adapter.web.TrickController;
-import org.maglez.eop.usecase.DealHandsUseCase;
-import org.maglez.eop.usecase.EndSessionUseCase;
-import org.maglez.eop.usecase.GetScoreUseCase;
-import org.maglez.eop.usecase.GetTrickStateUseCase;
-import org.maglez.eop.usecase.PlayCardUseCase;
-import org.maglez.eop.usecase.ReadOwnHandUseCase;
-import org.maglez.eop.usecase.ResolveTrickUseCase;
-import org.maglez.eop.usecase.StartSessionUseCase;
+import org.maglez.eop.outbound.security.SecureRandomDeckShuffler;
+import org.maglez.eop.inbound.web.EndSessionController;
+import org.maglez.eop.inbound.web.ScoreController;
+import org.maglez.eop.inbound.web.TrickController;
+import org.maglez.eop.application.port.in.DealHandsPort;
+import org.maglez.eop.application.port.in.EndSessionPort;
+import org.maglez.eop.application.port.in.GetScorePort;
+import org.maglez.eop.application.port.in.GetTrickStatePort;
+import org.maglez.eop.application.port.in.PlayCardPort;
+import org.maglez.eop.application.port.in.ReadOwnHandPort;
+import org.maglez.eop.application.port.in.ResolveTrickPort;
+import org.maglez.eop.application.port.in.StartSessionPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.maglez.eop.domain.Trick;
 
 /**
  * Asserts that {@code eop.features.trick-play} withholds trick play when it is off.
@@ -86,26 +87,26 @@ class TrickPlayDisabledIntegrationTest {
 
     @Test
     @DisplayName("does not create the deal-hands use case at all")
-    void shouldNotRegisterTheDealHandsUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(DealHandsUseCase.class)).isEmpty();
+    void shouldNotRegisterTheDealHandsPort() {
+        Assertions.assertThat(context.getBeanNamesForType(DealHandsPort.class)).isEmpty();
     }
 
     @Test
     @DisplayName("does not create the play-card use case at all")
-    void shouldNotRegisterThePlayCardUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(PlayCardUseCase.class)).isEmpty();
+    void shouldNotRegisterThePlayCardPort() {
+        Assertions.assertThat(context.getBeanNamesForType(PlayCardPort.class)).isEmpty();
     }
 
     @Test
     @DisplayName("does not create the resolve-trick use case at all")
-    void shouldNotRegisterTheResolveTrickUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(ResolveTrickUseCase.class)).isEmpty();
+    void shouldNotRegisterTheResolveTrickPort() {
+        Assertions.assertThat(context.getBeanNamesForType(ResolveTrickPort.class)).isEmpty();
     }
 
     @Test
     @DisplayName("does not create the read-own-hand use case at all")
-    void shouldNotRegisterTheReadOwnHandUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(ReadOwnHandUseCase.class)).isEmpty();
+    void shouldNotRegisterTheReadOwnHandPort() {
+        Assertions.assertThat(context.getBeanNamesForType(ReadOwnHandPort.class)).isEmpty();
     }
 
     /**
@@ -119,15 +120,15 @@ class TrickPlayDisabledIntegrationTest {
      */
     @Test
     @DisplayName("does not create the trick-state use case at all")
-    void shouldNotRegisterTheGetTrickStateUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(GetTrickStateUseCase.class)).isEmpty();
+    void shouldNotRegisterTheGetTrickStatePort() {
+        Assertions.assertThat(context.getBeanNamesForType(GetTrickStatePort.class)).isEmpty();
     }
 
     /** Asserts the score use case is not created while the flag is off. */
     @Test
     @DisplayName("does not create the score use case")
-    void shouldNotRegisterTheGetScoreUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(GetScoreUseCase.class)).isEmpty();
+    void shouldNotRegisterTheGetScorePort() {
+        Assertions.assertThat(context.getBeanNamesForType(GetScorePort.class)).isEmpty();
     }
 
     @Test
@@ -146,8 +147,8 @@ class TrickPlayDisabledIntegrationTest {
     /** Asserts the end-session use case is not created while the flag is off. */
     @Test
     @DisplayName("does not create the end-session use case at all")
-    void shouldNotRegisterTheEndSessionUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(EndSessionUseCase.class)).isEmpty();
+    void shouldNotRegisterTheEndSessionPort() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionPort.class)).isEmpty();
     }
 
     /**
@@ -227,7 +228,7 @@ class TrickPlayDisabledIntegrationTest {
                 .as("the shuffler is ungated on purpose: it is stateless and reaches no table")
                 .isNotEmpty();
 
-        Assertions.assertThat(context.getBeanNamesForType(StartSessionUseCase.class))
+        Assertions.assertThat(context.getBeanNamesForType(StartSessionPort.class))
                 .as("session lifecycle is behind its own flag, which this test does not touch")
                 .isNotEmpty();
     }

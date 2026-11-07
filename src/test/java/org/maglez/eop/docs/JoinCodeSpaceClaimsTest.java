@@ -16,7 +16,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.entity.JoinCode;
+import org.maglez.eop.domain.JoinCode;
+import org.maglez.eop.inbound.web.GlobalExceptionHandler;
+import org.maglez.eop.outbound.security.SecureRandomJoinCodeGenerator;
 
 /**
  * Holds the prose that reasons about the <em>width of the join-code space</em> against the two
@@ -75,7 +77,7 @@ class JoinCodeSpaceClaimsTest {
     private static final Path ADR = Path.of("docs", "adr", "ADR-019-session-lifecycle-and-join-codes.md");
 
     private static final Path HANDLER = Path.of(
-            "src", "main", "java", "org", "maglez", "eop", "adapter", "web", "GlobalExceptionHandler.java");
+            "src", "main", "java", "org", "maglez", "eop", "inbound", "web", "GlobalExceptionHandler.java");
 
     /**
      * The width the prose currently states, in bits. Asserted against the derived value rather

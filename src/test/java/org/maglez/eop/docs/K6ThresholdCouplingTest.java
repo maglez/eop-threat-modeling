@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+
 /**
  * Holds the k6 threshold-count constant in {@code .github/workflows/ci.yml} in step with the
  * thresholds actually declared in {@code test/k6/config/options-ci.js}, and holds the workflow to

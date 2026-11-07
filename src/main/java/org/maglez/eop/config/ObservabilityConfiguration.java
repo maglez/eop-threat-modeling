@@ -1,6 +1,6 @@
 package org.maglez.eop.config;
 
-import org.maglez.eop.adapter.web.CorrelationIdFilter;
+import org.maglez.eop.inbound.web.CorrelationIdFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

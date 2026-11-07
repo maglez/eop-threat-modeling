@@ -110,7 +110,7 @@ rather than merely rejected.
 **Amended 2026-08-21, EOP-49 — the ordinal, not the property.** The heading and the paragraph above
 said "first statement", which holds for `DealHandsUseCase` (`:132-133`) and `ResolveTrickUseCase`
 (`:165-166`) but not for `PlayCardUseCase`, where a null check on the command and a read of its
-session identifier precede the call (`PlayCardUseCase.java:175` and `:187`, port call at `:189`).
+session identifier precede the call (`PlayCardService.java:175` and `:187`, port call at `:189`).
 Only the ordinal was wrong: authorisation still precedes every hand, trick and card read, which is
 the property this decision exists to assert, and the qualifier "before reading a hand, a trick or a
 card" was true throughout. Both are now "first port call". The same wording is corrected in ADR-024's
@@ -185,11 +185,11 @@ whole trick, and a client still learns of a deal, a play or a resolution only by
 **2026-08-14, EOP-14 Slice E.** The second half is discharged, and the two paragraphs above are now
 history rather than description. All three writes are paired with a publish on the write, though
 since EOP-190 none of the three publishers is held by the use case that owns the route:
-`HandDealer.java:142` (anchor: `HAND_DEALT`) emits `HAND_DEALT` — EOP-190 moved the deal, and with
+`HandDealer.java:152` (anchor: `HAND_DEALT`) emits `HAND_DEALT` — EOP-190 moved the deal, and with
 it the publisher, out of `DealHandsUseCase` and into that collaborator so `NewGameUseCase` could
 stop holding a second copy of it — while `CARD_PLAYED` and `TRICK_RESOLVED` are both emitted by
-`TrickJournal`, at `TrickJournal.java:125` (anchor: `CARD_PLAYED`) and
-`TrickJournal.java:158` (anchor: `TRICK_RESOLVED`), which `PlayCardUseCase` and `ResolveTrickUseCase` share so the two
+`TrickJournal`, at `TrickJournal.java:134` (anchor: `CARD_PLAYED`) and
+`TrickJournal.java:167` (anchor: `TRICK_RESOLVED`), which `PlayCardUseCase` and `ResolveTrickUseCase` share so the two
 routes cannot come to announce a resolution differently. Read the present tense of decision 8 as "as at Slice C2"; the stream is no longer
 silent for a whole trick, and the three names are no longer **reserved** in the contract. Two
 properties of the wiring are worth recording because they were choices, not consequences. Each
@@ -229,12 +229,12 @@ applies them, on an **opening** play — the only path that writes a trick row:
 
 | Refusal in `acceptPlay` | Why it cannot fire after `openTrick` |
 | --- | --- |
-| `IllegalArgumentException`, seat outside the table (`Trick.java:367-369`) | Unreachable. `actingSeat` is read from the resolved `Player` (`PlayCardUseCase.java:179`), never from the request, and the domain bounded it when the seat was assigned. |
-| `NotYourSeatException` (`Trick.java:372`) | **Inexpressible, not pre-flighted.** The check compares `candidate.seatOrder()` with `actingSeat`, and the candidate is constructed *with* `actingSeat` (`PlayCardUseCase.java:223-243`). The two operands are the same value by construction, so no input can make them differ. |
-| `IllegalArgumentException` from `hands.handOf(actingSeat)` (`Trick.java:376`) | Pre-flighted by `hands.hasSeat(actingSeat)` (`PlayCardUseCase.java:186-199`), which refuses with `PlayerNotInSessionException` first. |
+| `IllegalArgumentException`, seat outside the table (`Trick.java:367-369`) | Unreachable. `actingSeat` is read from the resolved `Player` (`PlayCardService.java:179`), never from the request, and the domain bounded it when the seat was assigned. |
+| `NotYourSeatException` (`Trick.java:372`) | **Inexpressible, not pre-flighted.** The check compares `candidate.seatOrder()` with `actingSeat`, and the candidate is constructed *with* `actingSeat` (`PlayCardService.java:223-243`). The two operands are the same value by construction, so no input can make them differ. |
+| `IllegalArgumentException` from `hands.handOf(actingSeat)` (`Trick.java:376`) | Pre-flighted by `hands.hasSeat(actingSeat)` (`PlayCardService.java:186-199`), which refuses with `PlayerNotInSessionException` first. |
 | `PlayerMismatchException` (`Trick.java:378`) | Unreachable, but **for a reason neither pre-flight supplies.** It compares `hand.playerId()` — frozen into `Hands` when the deal was recorded — with the resolved player's identifier. They can only disagree if a seat changes hands after the deal, and no such path exists: `seatPlayer` is guarded by `touchWhileInStatus(..., LOBBY, ...)` (`SessionRepositoryAdapter.java:104-108`), `GameSession.join` refuses unless the status accepts new players (`GameSession.java:172-174`) and only `LOBBY` does (`SessionStatus.java:52-53`), and `GameSession` has no leave, remove or vacate method at all. The seat-to-player map is immutable from the moment the session starts. |
-| `OutOfTurnException` (`Trick.java:244`, via `assertSeatMayPlay` at `:232`) | Pre-flighted by the leader-seat comparison (`PlayCardUseCase.java:210-223`), which is what makes the play an opening play in the first place. |
-| `IllegalStateException`, seat holding no cards (`Trick.java:241`, same helper) | Pre-flighted by `hand.resolve(card)` (`PlayCardUseCase.java:198`), which cannot succeed against an empty hand. |
+| `OutOfTurnException` (`Trick.java:244`, via `assertSeatMayPlay` at `:232`) | Pre-flighted by the leader-seat comparison (`PlayCardService.java:210-223`), which is what makes the play an opening play in the first place. |
+| `IllegalStateException`, seat holding no cards (`Trick.java:241`, same helper) | Pre-flighted by `hand.resolve(card)` (`PlayCardService.java:198`), which cannot succeed against an empty hand. |
 | `CardNotInHandException` (raised in `Hand.java:115`, reached through `assertLegalPlay` at `Trick.java:203`) | Pre-flighted by the same `hand.resolve(card)` — the use case calls the identical method on the identical hand before the write. |
 | `MustFollowSuitException` (`Trick.java:215`, same helper) | Cannot fire on an opening play: no suit has been led, so `ledSuit()` is empty and `assertLegalPlay` returns at `Trick.java:209-210`. |
 
@@ -282,7 +282,7 @@ most: `:140`, `:147-149`, `:156`, `:168-170` and `:181-190` had all come to land
 javadoc `@throws` block, roughly forty lines above the code they name, so a reader following one to
 confirm a pre-flight arrived at documentation and could confirm nothing. Only `Trick.java:372` and
 `:378`, `Hand.java:115` and the deal's publish were still right, and those are untouched. The last
-of them now reads `HandDealer.java:142` (anchor: `HAND_DEALT`): EOP-190 moved the line rather than
+of them now reads `HandDealer.java:152` (anchor: `HAND_DEALT`): EOP-190 moved the line rather than
 changing it, and this sentence is re-pointed rather than rewritten because the audit it records
 found the claim sound.
 The enumeration itself was re-checked while the anchors were: the constructor still makes nine
@@ -323,21 +323,21 @@ checked against it, row by row.
 - End of hand is not recognised in this slice, and the whole of the shortfall is one line. That line is
   the `nextLeaderSeat` assignment in `ResolveTrickUseCase.execute`, which reads
   `final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards).orElse(resolved.winningSeat());`
-  — `ResolveTrickUseCase.java:137` as this ADR is written, and identified by that expression rather than
+  — `ResolveTrickService.java:137` as this ADR is written, and identified by that expression rather than
   by the line number alone, because the number moves and the expression does not. It writes the winning
   seat as the next leader even when the winner holds
   no card, because `TrickRepository.recordResolution` takes an `int` and the port has no value meaning
   "nobody leads next". It is harmless while it lasts — no seat can play, so no read of the column can
   mislead a legal move — and Slice E replaces that line together with the port signature that forces
   it. A reviewer of Slice E should expect the diff to touch both. **An earlier version of this bullet
-  pinned the shortfall to `ResolveTrickUseCase.java:134`, which is the `throw` inside the
+  pinned the shortfall to `ResolveTrickService.java:134`, which is the `throw` inside the
   `WinningPlayNotInTrickException` guard — that guard stood at `:131-135` when this bullet was written
   and stands at `:151-157` after Slice E, and it is an integrity check, not a placeholder. An
   implementer who had followed that citation literally would have deleted the guard. Corrected
   2026-08-13; the `.orElse` expression is quoted above so the pin cannot rot back into pointing at a
   guard.**
   **2026-08-14, EOP-14 Slice E.** Discharged, and the diff did touch both. The `.orElse` is deleted:
-  `ResolveTrickUseCase.java:184` (anchor: `nextLeaderSeat`) reads
+  `ResolveTrickService.java:192` (anchor: `nextLeaderSeat`) reads
   `final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards);` and passes the
   `OptionalInt` through untouched, because `TrickRepository.recordResolution`'s next-leader parameter
   widened from `int` to `OptionalInt` (`TrickRepository.java:166-167`). That assignment stood at

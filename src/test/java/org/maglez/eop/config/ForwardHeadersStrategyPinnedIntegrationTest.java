@@ -22,7 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * Compose subnet — and {@code 127.0.0.0/8}, which covers local {@code ./mvnw spring-boot:run}.
  * With {@code FRAMEWORK}, Spring's {@code ForwardedHeaderFilter} overrides
  * {@code getRemoteAddr()} with no trust check at all. Either alternative would launder
- * {@code X-Forwarded-For} into the one input {@link org.maglez.eop.adapter.web.ClientAddressResolver}
+ * {@code X-Forwarded-For} into the one input {@link org.maglez.eop.inbound.web.ClientAddressResolver}
  * trusts, silently re-opening EOP-26 without any test failing.
  *
  * <p>Two assertions are made here, and the reasoning for each is worth stating:

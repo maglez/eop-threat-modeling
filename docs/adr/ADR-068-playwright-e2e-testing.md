@@ -337,9 +337,9 @@ Completing a game and recording its result are two steps, and only the first is 
 `TrickJournal` marks the session completed (`TrickJournal.java:173`), then persists the final
 standings on a best-effort basis — the call is wrapped so that a `RuntimeException` is logged and
 swallowed (`TrickJournal.java:180-186`) — and then publishes `GAME_COMPLETED`
-(`TrickJournal.java:193`, anchor: `GAME_COMPLETED`) whether or not that persist succeeded. A client
+(`TrickJournal.java:202`, anchor: `GAME_COMPLETED`) whether or not that persist succeeded. A client
 woken by that event may therefore read the leaderboard before the result row exists, and
-`GetLeaderboardUseCase.java:81` (anchor: `GameResultNotRecordedException`) throws
+`GetLeaderboardService.java:78` (anchor: `GameResultNotRecordedException`) throws
 `GameResultNotRecordedException` for exactly that case, which `GlobalExceptionHandler.java:1017`
 maps to **404** — deliberately the same status an absent session gets.
 
@@ -502,7 +502,7 @@ and for the same reason: the criteria were authored from the API surface rather 
 
 The ticket asked for a scenario in which a leaderboard shows "the current game's players **and**
 historical rows from the seeded prior game". No such view exists and none is planned.
-`GetLeaderboardUseCase.java:76` (anchor: `GameNotCompletedException`) refuses any session that is
+`GetLeaderboardService.java:77` (anchor: `GameNotCompletedException`) refuses any session that is
 not `COMPLETED`, and the projection it builds is scoped to the one session in the path. The
 persistence layer reinforces this: one result row is kept per session so that the leaderboard
 always reflects the latest completed game of *that* session.
@@ -518,7 +518,7 @@ games Chromium's finished game is already persisted.
 The ticket's fourth criterion expected `POST /new-game` to move the session "back to LOBBY" with
 "all players returned to the lobby screen". It does not. The use case clears tricks and hands,
 resets the session straight to `IN_PROGRESS` and deals a fresh deck to the same players in the
-same seats (`NewGameUseCase.java:129`, anchor: `resetToInProgress`).
+same seats (`NewGameService.java:136`, anchor: `resetToInProgress`).
 `SessionStatus.LOBBY` is not re-entered by any code path.
 
 The front end used to briefly *render* the lobby: it routed the facilitator through
