@@ -2,6 +2,10 @@
   "_comment": [
     "Accepted high/critical npm advisories for the OpenCode plugin roster.",
     "Read by tools/supply-chain/audit-plugins.sh. Measured 2026-08-20.",
+    "Re-verified and extended 2026-11-07 (EOP-257/258/259): the four entries",
+    "introduced by @tarquinen/opencode-smart-title were deleted with that",
+    "plugin's removal, the two seroval entries were refreshed, and seven new",
+    "entries were added after tracing each one (seroval x3, toml x3, zod x1).",
     "",
     "SCOPE. This file governs high and critical advisories only, because those are",
     "the only severities that fail the audit. Low and moderate findings are reported",
@@ -31,54 +35,6 @@
     "dependency to carrying an entry indefinitely."
   ],
   "advisories": {
-    "GHSA-vrm6-8vpv-qv8q": {
-      "module": "undici",
-      "severity": "high",
-      "reported_range": "<6.24.0",
-      "installed": "5.29.0",
-      "title": "Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
-      "reachability": "Not reached, on two independent grounds. (1) The defect is in undici's WebSocket client. The only package in the tree that requires undici is @ai-sdk/provider-utils, whose sole use is createSafeNodeFetch() in dist/index.js -- a createRequire(...)(\"undici\") that destructures { Agent, fetch } and nothing else. WebSocket is never imported, so the vulnerable class is never constructed. (2) That require sits behind isNodeRuntime(), which is `process.release.name === \"node\" && process.versions.bun == null`. OpenCode loads plugins under Bun, so it is false, getDefaultDownloadFetch() falls back to globalThis.fetch, and the undici module is never loaded at all.",
-      "no_fix_available": "There is no in-range upgrade. @ai-sdk/provider-utils@3.0.41 is the newest 3.x and depends on undici ^5.29.0; @ai-sdk/gateway@2.0.137 pins provider-utils to that exact version, so npm cannot lift it; and the `ai@^5.0.98` range that pulls the gateway in is declared by the plugin's own package.json, not by us. `npm audit fix` changes nothing and `--force` would require a breaking major we do not control.",
-      "reviewed": "2026-08-20",
-      "reviewed_under": "EOP-000"
-    },
-    "GHSA-v9p9-hfj2-hcw8": {
-      "module": "undici",
-      "severity": "high",
-      "reported_range": "<6.24.0",
-      "installed": "5.29.0",
-      "title": "Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
-      "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
-      "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
-      "reviewed": "2026-08-20",
-      "reviewed_under": "EOP-000"
-    },
-    "GHSA-vxpw-j846-p89q": {
-      "module": "undici",
-      "severity": "high",
-      "reported_range": "<6.27.0",
-      "installed": "5.29.0",
-      "title": "undici WebSocket client vulnerable to denial of service via fragment count bypass",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> ai@5.x -> @ai-sdk/gateway -> @ai-sdk/provider-utils@3.0.41 -> undici@^5.29.0",
-      "reachability": "Same trace as GHSA-vrm6-8vpv-qv8q: a WebSocket-client defect in a module whose only consumer imports { Agent, fetch }, behind an isNodeRuntime() guard that is false under Bun.",
-      "no_fix_available": "See GHSA-vrm6-8vpv-qv8q -- the version is pinned exactly two levels up and the range is declared by the plugin.",
-      "reviewed": "2026-08-20",
-      "reviewed_under": "EOP-000"
-    },
-    "GHSA-x8mw-p69m-v3mx": {
-      "module": "@fastify/busboy",
-      "severity": "high",
-      "reported_range": ">=1.0.0 <3.2.1",
-      "installed": "2.1.1",
-      "title": "@fastify/busboy vulnerable to denial of service via prototype-named multipart part header",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> @ai-sdk/openai-compatible@1.0.58 -> @ai-sdk/provider-utils@3.0.41 -> undici@5.29.0 -> @fastify/busboy@^2.0.0",
-      "reachability": "Not reached, on three independent grounds. (1) The only package in the tree that requires undici is @ai-sdk/provider-utils, whose sole use is createSafeNodeFetch() in dist/index.js:485 -- a createRequire(...)(\"undici\") that destructures { Agent, fetch } and uses fetch for JSON request and response bodies. undici instantiates the vulnerable parser only inside Response.prototype.formData() (undici/lib/fetch/body.js:397, guarded by /multipart\\/form-data/.test(contentType)), which is never called on a multipart response here, so `new Busboy(...)` is never constructed. (2) That require sits behind isNodeRuntime() (dist/index.js:474-483), which is `process.release.name === \"node\" && process.versions.bun == null && ...`; OpenCode loads plugins under Bun, so it is false, getDefaultDownloadFetch() falls back to globalThis.fetch, and undici is never loaded at all. (3) Even on Node, undici's own call site already attaches `busboy.on('error', (err) => reject(new TypeError(err)))` at body.js:438, so the synchronous-throw variant is converted to a rejected promise rather than terminating the process.",
-      "no_fix_available": "There is no in-range upgrade. The fix (3.2.1) is a breaking major outside the dependent's declared range: undici@5.29.0 declares `@fastify/busboy ^2.0.0` and is the newest 5.x, and no undici 6.x/7.x/8.x is in range for its consumer. @ai-sdk/provider-utils@3.0.41 declares `undici ^5.29.0` and is the newest 3.x; @ai-sdk/openai-compatible@1.0.58 and @ai-sdk/gateway@2.0.162 pin provider-utils exactly; and @tarquinen/opencode-smart-title@0.1.7 is the plugin's newest release. npm cannot lift any link without a breaking major we do not control.",
-      "reviewed": "2026-10-05",
-      "reviewed_under": "EOP-000"
-    },
     "GHSA-p6vx-979v-rg4c": {
       "module": "seroval",
       "severity": "critical",
@@ -87,9 +43,9 @@
       "title": "Seroval: `fromJSON()` Promise thenable assimilation invokes plugin-produced callables (bypass of GHSA-mv8w-475r-vwqw)",
       "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
       "reachability": "Not reached. seroval is imported only by solid-js/web/dist/server.js (lines 3-4), the SSR server-rendering entry, which pulls Serializer from seroval and plugins from seroval-plugins/web. Nothing in the installed DCP/@opentui tree imports solid-js/web at all: DCP is a terminal-UI plugin built on @opentui/solid, which renders to the terminal and never server-renders HTML, and solid-js's `node` export condition resolves the package root '.' to ./dist/server.js, the core server build, which imports no seroval. DCP's own dist/, lib/ and tui code reference seroval, hydrate, fromJSON and deserialize nowhere. This advisory is a defect in seroval's fromJSON() deserialisation path, reachable only when the SSR serializer revives untrusted input -- a path this tree never loads.",
-      "no_fix_available": "There is no in-range upgrade. seroval is pinned by solid-js: even the newest solid-js@1.9.15 declares `seroval ~1.5.4`, which excludes every patched release (1.6.1 fixes this critical, 1.6.3 the paired high). No DCP release lifts it -- 3.2.0 (newest stable) and 3.2.8-beta0 both still depend on solid-js. And no repo-side override is possible: OpenCode generates its own per-plugin manifest under ~/.cache/opencode/packages/@tarquinen/opencode-dcp@3.1.15/ and runs npm install itself, so nothing committed here reaches that install.",
-      "reviewed": "2026-10-06",
-      "reviewed_under": "EOP-000"
+      "no_fix_available": "There is no in-range upgrade. seroval is pinned by solid-js: solid-js@1.9.12 declares `seroval ~1.5.4`, and even the newest 1.9.15 declares the same range, which excludes every patched release (1.6.1 fixes this critical, 1.6.3 the paired high). DCP 3.2.0 (newest stable) declares `solid-js ^1.9.12`, a range that admits fixed solid-js 1.9.16+ (seroval ~1.6.8), but @opentui/solid@0.4.5 -- the version DCP 3.2.0's `^0.4.5` range resolves -- peer-declares solid-js exactly 1.9.12, and a scratch install on 2026-11-07 confirmed resolution keeps solid-js 1.9.12 and seroval 1.5.6. @opentui/solid 0.8.x loosens the peer to ^1.9.12, but DCP's range caps at 0.4.x. No repo-side override is possible: OpenCode generates its own per-plugin manifest under ~/.cache/opencode/packages/@tarquinen/opencode-dcp@3.1.15/ and runs npm install itself, so nothing committed here reaches that install. The named exit is the move to Sleev, DCP's upstream successor, tracked separately.",
+      "reviewed": "2026-11-07",
+      "reviewed_under": "EOP-258"
     },
     "GHSA-jp82-f5mq-hwhp": {
       "module": "seroval",
@@ -99,33 +55,9 @@
       "title": "Seroval: Memory exhaustion via unchecked TypedArray length in JSON deserialization",
       "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
       "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's JSON deserialisation path, imported only by solid-js/web's SSR server-rendering entry, which this terminal-UI plugin tree never loads.",
-      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js, and no DCP or solid-js release in range moves it.",
-      "reviewed": "2026-10-06",
-      "reviewed_under": "EOP-000"
-    },
-    "GHSA-2m5v-pch6-74hx": {
-      "module": "undici",
-      "severity": "high",
-      "reported_range": ">=4.0.0 <6.29.1",
-      "installed": "5.29.0",
-      "title": "undici vulnerable to TLS certificate validation bypass via dropped tls options in Agent",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> @ai-sdk/openai-compatible@1.0.61 -> @ai-sdk/provider-utils@3.0.44 -> undici@^5.29.0",
-      "reachability": "Not reached, on two independent grounds. (1) The advisory itself states: \"Only applications that pass a function-valued tls option (such as a custom checkServerIdentity) are affected. Passing the same options through connect is not affected.\" The only undici consumer in the tree, @ai-sdk/provider-utils createSafeNodeFetch() (dist/index.js:490), does `const { Agent, fetch } = nodeRequire(\"undici\")` (line 496) and constructs `new Agent({ connect: { lookup: createSafeLookup(lookup) } })` (line 497) -- options contain only connect.lookup and no tls option at all, function-valued or otherwise, so the dropped-tls path is not exercised even on Node. (2) That require sits behind isNodeRuntime() (dist/index.js:479, `process.release.name === \"node\" && process.versions.bun == null && ...`), which is false under Bun, so getDefaultDownloadFetch() (line 484) returns globalThis.fetch and undici is never loaded at all. Same second ground as GHSA-vrm6-8vpv-qv8q.",
-      "no_fix_available": "The fix is undici 6.29.1, outside the declared range: @ai-sdk/provider-utils@3.0.44 declares `undici ^5.29.0` and is the newest 3.x, @ai-sdk/gateway@2.0.176 pins provider-utils exactly, and the `ai@^5.0.98` range that pulls the gateway in is declared by the plugin's own package.json, not by us. smart-title's newest release is the pinned 0.1.7, so there is no plugin bump that lifts it either.",
+      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js, and DCP 3.2.0's solid-js ^1.9.12 range is held at 1.9.12 by @opentui/solid@0.4.5's exact peer (verified by scratch install 2026-11-07).",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
-    },
-    "GHSA-qrxm-fqhp-jwvm": {
-      "module": "undici",
-      "severity": "high",
-      "reported_range": ">=4.2.1 <6.29.1",
-      "installed": "5.29.0",
-      "title": "undici vulnerable to Denial of Service via TLS 1.2 certificate-changing renegotiation",
-      "introduced_by": "@tarquinen/opencode-smart-title@0.1.7 -> @ai-sdk/openai-compatible@1.0.61 -> @ai-sdk/provider-utils@3.0.44 -> undici@^5.29.0",
-      "reachability": "Not reached, on two independent grounds. (1) The advisory requires a malicious or compromised HTTPS endpoint reached through undici that renegotiates TLS 1.2 and presents a different certificate. undici's only use in this tree is createSafeNodeFetch() (@ai-sdk/provider-utils dist/index.js:490), reached via getDefaultDownloadFetch() (line 484) for downloads from the developer-configured provider endpoint -- the developer's own API key and base URL, not an untrusted submitter that can be pointed at an attacker endpoint. (2) That path sits behind isNodeRuntime() (dist/index.js:479), which is false under Bun, so undici is never loaded at all in the OpenCode plugin runtime. Same second ground as GHSA-vrm6-8vpv-qv8q.",
-      "no_fix_available": "See GHSA-2m5v-pch6-74hx -- the fix is undici 6.29.1, outside provider-utils' declared ^5.29.0 range, and smart-title is already at its newest release.",
-      "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-258"
     },
     "GHSA-7rv5-mrxv-xcr9": {
       "module": "seroval",
@@ -134,10 +66,10 @@
       "installed": "1.5.6",
       "title": "Seroval: Deserialization invokes attacker-chosen callables: AsyncIteratorFactoryInstance calls source.on(listener) without type check",
       "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
-      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's fromJSON deserialisation path (the advisory requires untrusted input passed to fromJSON), and seroval is imported only by solid-js/web/dist/server.js (lines 3-4), the SSR server-rendering entry this terminal-UI plugin tree never loads. fromJSON is never called anywhere in the DCP/solid core tree (grep over solid-js/dist and DCP dist finds no fromJSON/fromCrossJSON).",
-      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js, excluding the 1.6.8 fix, and the newest DCP 3.2.0 still installs solid-js@1.9.12 with seroval@1.5.6 (verified by scratch install).",
+      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: this is a deserialisation-time callable-invocation defect in seroval, which is imported only by solid-js/web/dist/server.js, the SSR server-rendering entry. The DCP/@opentui terminal tree never imports solid-js/web, solid-js's `node` export condition resolves '.' to ./dist/server.js (no seroval import), and DCP's dist/, lib/ and tui code invoke no seroval deserialisation entry point (fromJSON, fromCrossJSON, deserialize). The vulnerable path -- reviving untrusted input through the SSR serializer -- is never loaded.",
+      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js 1.9.12, held in place by @opentui/solid@0.4.5's exact solid-js peer; no in-range release of any package in the chain moves it.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-258"
     },
     "GHSA-97r2-qh9m-474h": {
       "module": "seroval",
@@ -146,10 +78,10 @@
       "installed": "1.5.6",
       "title": "Seroval: fromJSON deserializer trusts node-supplied array length and sequence doneAt (unauthenticated event-loop DoS)",
       "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
-      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's fromJSON/fromCrossJSON deserialisation path (the advisory requires untrusted input passed to those functions), and seroval is imported only by solid-js/web/dist/server.js (lines 3-4), the SSR server-rendering entry this terminal-UI plugin tree never loads.",
-      "no_fix_available": "See GHSA-7rv5-mrxv-xcr9 -- the fix is seroval 1.6.8, excluded by solid-js's ~1.5.4 pin.",
+      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's fromJSON() deserializer, imported only by solid-js/web/dist/server.js (SSR). The DCP/@opentui terminal tree never imports solid-js/web and never calls fromJSON/fromCrossJSON/deserialize, so node-supplied lengths from untrusted input are never read.",
+      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js 1.9.12, held in place by @opentui/solid@0.4.5's exact solid-js peer; no in-range release of any package in the chain moves it.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-258"
     },
     "GHSA-wp97-x4hv-qvhp": {
       "module": "seroval",
@@ -158,10 +90,10 @@
       "installed": "1.5.6",
       "title": "Seroval `fromJSON`/`fromCrossJSON` denial of service via unvalidated array node length",
       "introduced_by": "@tarquinen/opencode-dcp@3.1.15 -> solid-js@1.9.12 -> seroval@1.5.6",
-      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's fromJSON/fromCrossJSON deserialisation path (the advisory requires untrusted input passed to those functions), and seroval is imported only by solid-js/web/dist/server.js (lines 3-4), the SSR server-rendering entry this terminal-UI plugin tree never loads.",
-      "no_fix_available": "See GHSA-7rv5-mrxv-xcr9 -- the fix is seroval 1.6.8, excluded by solid-js's ~1.5.4 pin.",
+      "reachability": "Same trace as GHSA-p6vx-979v-rg4c: a defect in seroval's fromJSON/fromCrossJSON deserialisation (~1.4.1-1.6.7), imported only by solid-js/web/dist/server.js (SSR). The DCP/@opentui terminal tree never imports solid-js/web and never calls either deserialiser, so unvalidated array node lengths are never processed.",
+      "no_fix_available": "See GHSA-p6vx-979v-rg4c -- seroval is pinned to ~1.5.4 by solid-js 1.9.12, held in place by @opentui/solid@0.4.5's exact solid-js peer; no in-range release of any package in the chain moves it.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-258"
     },
     "GHSA-4qx8-w7c3-pj3p": {
       "module": "toml",
@@ -169,11 +101,11 @@
       "reported_range": "<=5.0.0",
       "installed": "4.3.0",
       "title": "toml-node: Quadratic-complexity DoS via many array-of-tables headers in toml.parse()",
-      "introduced_by": "@nick-vi/opencode-type-inject@1.5.2 -> @opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@^4.1.1",
-      "reachability": "Not reached, on three independent grounds. (1) The toml module is never loaded: @opencode-ai/plugin@1.19.5 declares effect as a dependency but its runtime JS never imports \"effect\" -- grep over @opencode-ai/plugin/dist/**/*.js for `from \"effect\"` / `require(\"effect\")` finds nothing (effect appears only in .d.ts type imports), and its runtime entry dist/index.js is just `export * from \"./tool.js\"`. So effect, and with it toml, is a type-only dependency in this tree. (2) Even if effect were loaded, the ONLY Toml.parse call site in the entire effect dist is effect/dist/unstable/cli/Primitive.js line 353 (`toml: content => Toml.parse(content)` inside fileParsers, used by Primitive.fileParse), and no package in the tree imports effect/unstable/cli (grep for \"effect/unstable/cli\" outside effect/ itself finds nothing). (3) Even that call site parses a file the developer themselves selected by path via Primitive.fileParse, not attacker-supplied or third-party TOML, which all three toml advisories require as input.",
-      "no_fix_available": "npm reports fixAvailable=false. The patched line is toml 5.0.1, a major outside effect@4.0.0-beta.83's declared `toml ^4.1.1` range. The newest type-inject 1.6.0 still installs @opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@4.3.0 (verified by scratch install), and @opencode-ai/plugin's newest release is the pinned 1.19.5, so no plugin bump lifts it either. No repo-side override can reach OpenCode's own per-plugin install.",
+      "introduced_by": "@opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@4.3.0",
+      "reachability": "Not reached. toml is required by exactly one file in the tree: effect/dist/unstable/cli/Primitive.js:353 (`const {default: Toml} = require(\"toml\")`, collected into the fileParsers map and read only by Primitive.fileParse). No file outside node_modules/effect/ references unstable/cli, and @opencode-ai/plugin's dist imports no effect subpath (its imports are @opencode-ai/plugin, @opencode-ai/sdk and the effect package root), so dist/unstable/cli/index.js -- the entry that would load Primitive.js -- is never resolved. The vulnerable function Toml.parse() is never invoked. All three toml advisories below share this trace.",
+      "no_fix_available": "There is no fixed release. @opencode-ai/plugin@1.19.5 is the newest release and declares effect 4.0.0-beta.83; effect@4.1.2 (newest 4.x prerelease line) still declares `toml ^4.1.1`, and the reported range <=5.0.0 covers every 4.x release, so no version in any declared range escapes it.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-259"
     },
     "GHSA-9j65-hcg3-gc64": {
       "module": "toml",
@@ -181,11 +113,11 @@
       "reported_range": "<=5.0.0",
       "installed": "4.3.0",
       "title": "toml-node: Quadratic-complexity DoS via long dotted keys or table paths in toml.parse()",
-      "introduced_by": "@nick-vi/opencode-type-inject@1.5.2 -> @opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@^4.1.1",
-      "reachability": "Same trace as GHSA-4qx8-w7c3-pj3p: the toml module is never loaded (effect is a type-only dependency of @opencode-ai/plugin, whose runtime JS never imports it), the only Toml.parse call site in effect is the unstable/cli fileParse primitive no package in the tree imports, and that primitive parses a developer-selected file, not attacker-supplied TOML.",
-      "no_fix_available": "See GHSA-4qx8-w7c3-pj3p -- npm reports fixAvailable=false; the patched toml 5.0.1 is outside effect's ^4.1.1 range and no newer plugin release moves the chain.",
+      "introduced_by": "@opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@4.3.0",
+      "reachability": "Same trace as GHSA-4qx8-w7c3-pj3p: toml is required only by effect/dist/unstable/cli/Primitive.js:353 (fileParsers map / Primitive.fileParse), which nothing outside node_modules/effect/ reaches -- @opencode-ai/plugin imports no effect subpath -- so Toml.parse() is never called.",
+      "no_fix_available": "See GHSA-4qx8-w7c3-pj3p -- @opencode-ai/plugin@1.19.5 is the newest release, effect@4.1.2 still declares toml ^4.1.1, and the range <=5.0.0 covers all 4.x.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-259"
     },
     "GHSA-9qmh-m7c6-f92p": {
       "module": "toml",
@@ -193,23 +125,23 @@
       "reported_range": "<=5.0.0",
       "installed": "4.3.0",
       "title": "toml-node: Uncontrolled resource consumption (CPU DoS) via unbounded-length integer literals in toml.parse()",
-      "introduced_by": "@nick-vi/opencode-type-inject@1.5.2 -> @opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@^4.1.1",
-      "reachability": "Same trace as GHSA-4qx8-w7c3-pj3p: the toml module is never loaded (effect is a type-only dependency of @opencode-ai/plugin, whose runtime JS never imports it), the only Toml.parse call site in effect is the unstable/cli fileParse primitive no package in the tree imports, and that primitive parses a developer-selected file, not attacker-supplied TOML.",
-      "no_fix_available": "See GHSA-4qx8-w7c3-pj3p -- npm reports fixAvailable=false; the patched toml 5.0.1 is outside effect's ^4.1.1 range and no newer plugin release moves the chain.",
+      "introduced_by": "@opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@4.3.0",
+      "reachability": "Same trace as GHSA-4qx8-w7c3-pj3p: toml is required only by effect/dist/unstable/cli/Primitive.js:353 (fileParsers map / Primitive.fileParse), which nothing outside node_modules/effect/ reaches -- @opencode-ai/plugin imports no effect subpath -- so Toml.parse() is never called.",
+      "no_fix_available": "See GHSA-4qx8-w7c3-pj3p -- @opencode-ai/plugin@1.19.5 is the newest release, effect@4.1.2 still declares toml ^4.1.1, and the range <=5.0.0 covers all 4.x.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-259"
     },
     "GHSA-mrhx-c7xc-m3w5": {
       "module": "zod",
       "severity": "high",
       "reported_range": "<4.6.6",
-      "installed": "4.1.8 (root, via @opencode-ai/plugin) and 4.4.3 (nested in opencode-goal-plugin)",
+      "installed": "4.1.8 and 4.4.3",
       "title": "Zod can exhaust memory while validating oversized constrained collections",
-      "introduced_by": "@opencode-ai/plugin@1.19.5 -> zod@4.1.8 (exact, deduped into @ai-sdk/* peers ^4.1.8) and opencode-goal-plugin@0.8.1 -> zod@4.4.3 (exact, nested)",
-      "reachability": "The advisory requires a large array submitted to an array schema WITHOUT a length constraint, with many failing elements, so handleArrayResult accumulates one issue object per failing element uncapped. Two installed nodes, traced separately. (1) goal-plugin nested zod@4.4.3: src/goal-plugin.js imports { z } from \"zod\" (line 17) but uses it ONLY as `schema: z` attached to a local bundledToolHelper identity function (line 3423, OpenCode's public tool() helper contract). Grep finds NO z.array, z.object, .parse() or .safeParse() zod validation call anywhere in goal-plugin src, and no array schema is defined there at all, so the vulnerable handleArrayResult path has no schema to run on. (2) Root zod@4.1.8 via ai-sdk: this node IS called, to validate provider responses, so the trace is trusted-input rather than never-loaded. @tarquinen/opencode-smart-title's only AI SDK usage is generateText (dist/index.js lines 219-220, lazy import('ai') then generateText({model, messages}) for title generation) -- it never calls listModels, spend-report or embedding APIs, so @ai-sdk/gateway's unconstrained z.array schemas (gatewayAvailableModelsResponseSchema models, gatewaySpendReportResponseSchema results, gatewayEmbeddingResponseSchema embeddings in gateway dist) are never invoked by this tree. The array schemas in the generateText path validate responses from the developer-configured provider endpoint (the developer's own API key and base URL via @tarquinen/opencode-auth-provider / OpenAI-compatible), already materialized by JSON.parse before zod sees them. There is no untrusted submitter in this runtime that can hand the plugin a large failing array: the only input is a trusted provider response. Re-verify if smart-title ever gains another ai call or a gateway list/embed call.",
-      "no_fix_available": "The fix is zod 4.6.6+. @opencode-ai/plugin's newest release is the pinned 1.19.5, still declaring exact zod 4.1.8, and the @ai-sdk/* peers (^3.25.76 || ^4.1.8) cannot lift that exact pin. The newest goal-plugin 0.11.4 does move its own nested node to zod 4.6.7 (verified by scratch install), but root zod 4.1.8 remains vulnerable, so the GHSA is still reported -- the bump alone does not clear the gate. No repo-side override can reach OpenCode's own per-plugin install.",
+      "introduced_by": "@opencode-ai/plugin@1.19.5 -> zod@4.1.8 (exact); opencode-goal-plugin@0.8.1 -> zod@4.4.3 (exact)",
+      "reachability": "Not reached. The defect requires an actual validation call (parse / safeParse / parseAsync) over a large constrained collection. After smart-title's removal the only importers of zod in the tree are @opencode-ai/plugin/dist/tool.js, which assigns tool.schema = z (schema construction only, the schema is handed back to the host and never validated here), and opencode-goal-plugin's src/goal-plugin.js:17, a dead import with zero `z.` uses anywhere in that file. No schema-validation call exists in the remaining tree: the only parses present are JSON.parse and goal-plugin's own flagSpec.parse, neither of which is a zod entry point.",
+      "no_fix_available": "There is no in-range upgrade. @opencode-ai/plugin@1.19.5 is the newest release and pins zod@4.1.8 exactly, so the root node cannot move. opencode-goal-plugin's newest release (0.11.4) does declare a fixed zod (4.6.7), but upgrading it would still leave zod@4.1.8 in the tree via @opencode-ai/plugin, and this advisory would keep being reported. The remaining exit is an upstream @opencode-ai/plugin release that lifts its exact zod pin.",
       "reviewed": "2026-11-07",
-      "reviewed_under": "EOP-000"
+      "reviewed_under": "EOP-259"
     }
   }
 }

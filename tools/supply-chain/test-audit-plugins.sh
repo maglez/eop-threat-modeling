@@ -180,100 +180,19 @@ cat > "$workdir/fixture-missing-metadata-vulns.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
-# Fixture 3: clean audit — no findings, all fifteen allowlisted GHSAs present
+# Fixture 3: clean audit — no findings, all nine allowlisted GHSAs present
 # in the report so the staleness check passes.
 # Shape mirrors a real npm audit --json output with zero vulnerabilities.
+# The roster is: seroval x5 (via @tarquinen/opencode-dcp -> solid-js),
+# toml x3 (via @opencode-ai/plugin -> effect), zod x1 (via
+# @opencode-ai/plugin and opencode-goal-plugin direct pins). The four
+# undici/busboy advisories that came in with @tarquinen/opencode-smart-title
+# left with that plugin's removal (EOP-257) and must NOT appear here.
 # ---------------------------------------------------------------------------
 cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
 {
   "auditReportVersion": 2,
   "vulnerabilities": {
-    "undici": {
-      "name": "undici",
-      "severity": "high",
-      "via": [
-        {
-          "source": 1099519,
-          "name": "undici",
-          "dependency": "undici",
-          "title": "undici WebSocket DoS via unconstrained resource accumulation",
-          "url": "https://github.com/advisories/GHSA-vrm6-8vpv-qv8q",
-          "severity": "high",
-          "cwe": ["CWE-400"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=6.21.0 <6.21.1"
-        },
-        {
-          "source": 1099520,
-          "name": "undici",
-          "dependency": "undici",
-          "title": "undici WebSocket DoS via memory exhaustion",
-          "url": "https://github.com/advisories/GHSA-v9p9-hfj2-hcw8",
-          "severity": "high",
-          "cwe": ["CWE-400"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=6.21.0 <6.21.1"
-        },
-        {
-          "source": 1099521,
-          "name": "undici",
-          "dependency": "undici",
-          "title": "undici WebSocket DoS via unbounded frame accumulation",
-          "url": "https://github.com/advisories/GHSA-vxpw-j846-p89q",
-          "severity": "high",
-          "cwe": ["CWE-400"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=6.21.0 <6.21.1"
-        },
-        {
-          "source": 1099530,
-          "name": "undici",
-          "dependency": "undici",
-          "title": "undici vulnerable to TLS certificate validation bypass via dropped tls options in Agent",
-          "url": "https://github.com/advisories/GHSA-2m5v-pch6-74hx",
-          "severity": "high",
-          "cwe": ["CWE-295"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=4.0.0 <6.29.1"
-        },
-        {
-          "source": 1099531,
-          "name": "undici",
-          "dependency": "undici",
-          "title": "undici vulnerable to Denial of Service via TLS 1.2 certificate-changing renegotiation",
-          "url": "https://github.com/advisories/GHSA-qrxm-fqhp-jwvm",
-          "severity": "high",
-          "cwe": ["CWE-400"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=4.2.1 <6.29.1"
-        }
-      ],
-      "effects": [],
-      "range": ">=6.21.0 <6.21.1",
-      "nodes": ["node_modules/undici"],
-      "fixAvailable": true
-    },
-    "@fastify/busboy": {
-      "name": "@fastify/busboy",
-      "severity": "high",
-      "via": [
-        {
-          "source": 1099522,
-          "name": "@fastify/busboy",
-          "dependency": "@fastify/busboy",
-          "title": "@fastify/busboy vulnerable to Denial of Service via prototype-named multipart part header",
-          "url": "https://github.com/advisories/GHSA-x8mw-p69m-v3mx",
-          "severity": "high",
-          "cwe": ["CWE-400"],
-          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
-          "range": ">=1.0.0 <3.2.1"
-        }
-      ],
-      "effects": [],
-      "range": ">=1.0.0 <3.2.1",
-      "nodes": ["node_modules/@fastify/busboy"],
-      "fixAvailable": true
-    },
     "seroval": {
       "name": "seroval",
       "severity": "critical",
@@ -301,18 +220,18 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "range": "<=1.6.2"
         },
         {
-          "source": 1099532,
+          "source": 1099525,
           "name": "seroval",
           "dependency": "seroval",
           "title": "Seroval: Deserialization invokes attacker-chosen callables: AsyncIteratorFactoryInstance calls source.on(listener) without type check",
           "url": "https://github.com/advisories/GHSA-7rv5-mrxv-xcr9",
           "severity": "high",
-          "cwe": ["CWE-94"],
+          "cwe": ["CWE-400"],
           "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
           "range": "<=1.6.7"
         },
         {
-          "source": 1099533,
+          "source": 1099526,
           "name": "seroval",
           "dependency": "seroval",
           "title": "Seroval: fromJSON deserializer trusts node-supplied array length and sequence doneAt (unauthenticated event-loop DoS)",
@@ -323,7 +242,7 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "range": "<=1.6.7"
         },
         {
-          "source": 1099534,
+          "source": 1099527,
           "name": "seroval",
           "dependency": "seroval",
           "title": "Seroval `fromJSON`/`fromCrossJSON` denial of service via unvalidated array node length",
@@ -337,14 +256,14 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "effects": [],
       "range": ">=0.12.0 <=1.6.7",
       "nodes": ["node_modules/seroval"],
-      "fixAvailable": true
+      "fixAvailable": false
     },
     "toml": {
       "name": "toml",
       "severity": "high",
       "via": [
         {
-          "source": 1099535,
+          "source": 1099528,
           "name": "toml",
           "dependency": "toml",
           "title": "toml-node: Quadratic-complexity DoS via many array-of-tables headers in toml.parse()",
@@ -355,7 +274,7 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "range": "<=5.0.0"
         },
         {
-          "source": 1099536,
+          "source": 1099529,
           "name": "toml",
           "dependency": "toml",
           "title": "toml-node: Quadratic-complexity DoS via long dotted keys or table paths in toml.parse()",
@@ -366,7 +285,7 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "range": "<=5.0.0"
         },
         {
-          "source": 1099537,
+          "source": 1099530,
           "name": "toml",
           "dependency": "toml",
           "title": "toml-node: Uncontrolled resource consumption (CPU DoS) via unbounded-length integer literals in toml.parse()",
@@ -387,7 +306,7 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "severity": "high",
       "via": [
         {
-          "source": 1099538,
+          "source": 1099531,
           "name": "zod",
           "dependency": "zod",
           "title": "Zod can exhaust memory while validating oversized constrained collections",
@@ -409,17 +328,17 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 14,
+      "high": 8,
       "critical": 1,
-      "total": 15
+      "total": 9
     },
     "dependencies": {
-      "prod": 7,
+      "prod": 9,
       "dev": 0,
       "optional": 0,
       "peer": 0,
       "peerOptional": 0,
-      "total": 7
+      "total": 9
     }
   }
 }
@@ -495,7 +414,7 @@ run_advisory_check \
 echo
 echo "--- Valid audit documents ---"
 run_advisory_check \
-    "all fifteen allowlisted GHSAs present: exits 0 (clean)" \
+    "all nine allowlisted GHSAs present: exits 0 (clean)" \
     "$workdir/fixture-clean-with-allowlisted.json" \
     0
 
