@@ -17,6 +17,8 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import org.maglez.eop.outbound.persistence.TrickPlayRepositoryAdapter;
+
 /**
  * Derives the set of non-constraint exception origins from the adapter and holds ADR-023 to it.
  *
@@ -28,7 +30,7 @@ import org.junit.jupiter.api.Test;
  * is why that arrived as a failing build rather than as a paragraph nobody re-read.
  *
  * <p>How it derives. Every construction of a type the adapter imports from {@code
- * org.maglez.eop.entity} is classified by <em>where</em> it sits. Inside {@code dealFailure}, {@code
+ * org.maglez.eop.domain} is classified by <em>where</em> it sits. Inside {@code dealFailure}, {@code
  * playFailure}, or any of the four {@code catch (final DataIntegrityViolationException ...)} blocks,
  * a constraint really was violated and a row of the table covers it. Inside {@code assertSeated},
  * the refusal came from a read. Anywhere else it came from a rows-affected count of zero. Both
@@ -64,7 +66,7 @@ class TrickPlayExceptionOriginTest {
 
     private static final Path ADAPTER =
             Path.of(
-                    "src", "main", "java", "org", "maglez", "eop", "adapter", "persistence",
+                    "src", "main", "java", "org", "maglez", "eop", "outbound", "persistence",
                     "TrickPlayRepositoryAdapter.java");
 
     /**
@@ -373,7 +375,7 @@ class TrickPlayExceptionOriginTest {
 
     /**
      * Domain exception constructions within the given ranges. "Domain" means a type the adapter
-     * imports from {@code org.maglez.eop.entity}, which excludes {@code IllegalStateException}
+     * imports from {@code org.maglez.eop.domain}, which excludes {@code IllegalStateException}
      * and {@code IllegalArgumentException} — server faults rather than refusals a caller earns.
      */
     private static Set<String> domainExceptionsConstructedIn(
@@ -395,7 +397,7 @@ class TrickPlayExceptionOriginTest {
     /** Exception types the adapter imports from the entity package. */
     private static Set<String> importedDomainExceptions(final String adapter) {
         final Pattern imported =
-                Pattern.compile("import org\\.maglez\\.eop\\.entity\\.(\\w+Exception);");
+                Pattern.compile("import org\\.maglez\\.eop\\.domain\\.(\\w+Exception);");
         final Matcher matcher = imported.matcher(adapter);
         final Set<String> found = new TreeSet<>();
         while (matcher.find()) {

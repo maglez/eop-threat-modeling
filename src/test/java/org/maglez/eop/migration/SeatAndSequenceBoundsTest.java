@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.entity.GameSession;
+import org.maglez.eop.domain.GameSession;
 
 import java.io.IOException;
 import java.io.InputStream;

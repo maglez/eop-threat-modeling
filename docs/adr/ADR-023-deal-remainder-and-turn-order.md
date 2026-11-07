@@ -1313,7 +1313,7 @@ exception type and its 422, and it is not a restatement of any of the other thre
 
 > **Amended 2026-08-13, EOP-14 Slice C2 — the owner named above has discharged it.** The last two
 > sentences of the correction directly above are now out of date in both halves. The check has a
-> thrower: `ResolveTrickUseCase.java:131-135` raises `WinningPlayNotInTrickException` (the `throw`
+> thrower: `ResolveTrickService.java:131-135` raises `WinningPlayNotInTrickException` (the `throw`
 > itself is `:134`) when the
 > resolved winning play is not among the plays of the trick being resolved, so "with no thrower
 > yet" no longer holds and neither does "the owner is unchanged and is Slice C2's resolve-trick
@@ -1449,7 +1449,7 @@ suite and PostgreSQL in production. C1 owns proving the context still starts, an
 first-class deliverable of C1 rather than something an existing context test covers incidentally.
 
 The clause "when dealing is first wired into session start" is also withdrawn as a dating anchor,
-independently of the split. `StartSessionUseCase.java:10-13` records the merged decision that
+independently of the split. `StartSessionService.java:10-13` records the merged decision that
 dealing is deliberately *not* behind the start call, because "putting it behind the same call would
 make two very different failures indistinguishable to the caller". Dealing arrives as its own call.
 The flag is dated by **the first player-reachable trick-play route**, whichever call that turns out

@@ -9,13 +9,13 @@ import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.adapter.web.SessionController;
-import org.maglez.eop.usecase.CreateSessionUseCase;
-import org.maglez.eop.usecase.GetSessionStateUseCase;
-import org.maglez.eop.usecase.JoinSessionUseCase;
-import org.maglez.eop.usecase.PlayCardUseCase;
-import org.maglez.eop.usecase.ResolvePlayerUseCase;
-import org.maglez.eop.usecase.StartSessionUseCase;
+import org.maglez.eop.inbound.web.SessionController;
+import org.maglez.eop.application.port.in.CreateSessionPort;
+import org.maglez.eop.application.port.in.GetSessionStatePort;
+import org.maglez.eop.application.port.in.JoinSessionPort;
+import org.maglez.eop.application.port.in.PlayCardPort;
+import org.maglez.eop.application.port.in.ResolvePlayerPort;
+import org.maglez.eop.application.port.in.StartSessionPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -68,7 +68,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * had the lobby been read-only it would have caught nothing at all.
  *
  * <p>The last two tests are the counterweight, and the first of them is load-bearing rather than
- * decorative. {@link ResolvePlayerUseCase} is ungated on purpose: it writes nothing, and the
+ * decorative. {@link ResolvePlayerPort} is ungated on purpose: it writes nothing, and the
  * trick-play use cases depend on it too. This context is precisely the combination that would expose
  * a mistake there — the lobby flag off while trick play is on, as the suite leaves it — so if
  * resolve-player were ever gated on the lobby flag, trick play would become unsatisfiable and this
@@ -105,20 +105,20 @@ class SessionLifecycleOffValueIntegrationTest {
 
     @Test
     @DisplayName("does not create the create-session use case at all")
-    void shouldNotRegisterTheCreateSessionUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(CreateSessionUseCase.class)).isEmpty();
+    void shouldNotRegisterTheCreateSessionPort() {
+        Assertions.assertThat(context.getBeanNamesForType(CreateSessionPort.class)).isEmpty();
     }
 
     @Test
     @DisplayName("does not create the join-session use case at all")
-    void shouldNotRegisterTheJoinSessionUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(JoinSessionUseCase.class)).isEmpty();
+    void shouldNotRegisterTheJoinSessionPort() {
+        Assertions.assertThat(context.getBeanNamesForType(JoinSessionPort.class)).isEmpty();
     }
 
     @Test
     @DisplayName("does not create the start-session use case at all")
-    void shouldNotRegisterTheStartSessionUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(StartSessionUseCase.class)).isEmpty();
+    void shouldNotRegisterTheStartSessionPort() {
+        Assertions.assertThat(context.getBeanNamesForType(StartSessionPort.class)).isEmpty();
     }
 
     /**
@@ -130,8 +130,8 @@ class SessionLifecycleOffValueIntegrationTest {
      */
     @Test
     @DisplayName("does not create the session-state use case at all")
-    void shouldNotRegisterTheGetSessionStateUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(GetSessionStateUseCase.class)).isEmpty();
+    void shouldNotRegisterTheGetSessionStatePort() {
+        Assertions.assertThat(context.getBeanNamesForType(GetSessionStatePort.class)).isEmpty();
     }
 
     /** Asserts the create route is not served, body and all. */
@@ -181,11 +181,11 @@ class SessionLifecycleOffValueIntegrationTest {
     @Test
     @DisplayName("leaves the shared resolve-player use case and trick play alone")
     void shouldLeaveTheSharedDependencyAndTrickPlayAlone() {
-        Assertions.assertThat(context.getBeanNamesForType(ResolvePlayerUseCase.class))
+        Assertions.assertThat(context.getBeanNamesForType(ResolvePlayerPort.class))
                 .as("resolve-player is ungated on purpose: it writes nothing and trick play depends on it")
                 .isNotEmpty();
 
-        Assertions.assertThat(context.getBeanNamesForType(PlayCardUseCase.class))
+        Assertions.assertThat(context.getBeanNamesForType(PlayCardPort.class))
                 .as("trick play is behind its own flag, which this test does not touch")
                 .isNotEmpty();
     }

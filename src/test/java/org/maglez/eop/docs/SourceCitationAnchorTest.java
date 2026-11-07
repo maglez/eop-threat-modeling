@@ -17,6 +17,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.maglez.eop.application.port.in.PlayCardPort;
+import org.maglez.eop.domain.Trick;
+import org.maglez.eop.inbound.web.SessionController;
 
 /**
  * Holds the {@code File.java:123} line citations scattered through {@code docs/} against the files they name.
@@ -370,15 +373,15 @@ class SourceCitationAnchorTest {
     @DisplayName("citations and anchors are parsed out of synthetic prose")
     void shouldParseCitationsAndAnchorsFromSyntheticProse() {
         final List<String> prose = List.of(
-                "The publish happens at `PlayCardUseCase.java:253` (anchor: `CARD_PLAYED`), after the writes.",
+                "The publish happens at `PlayCardPort.java:253` (anchor: `CARD_PLAYED`), after the writes.",
                 "The constructor rejects a bad seat (`Trick.java:51`).",
                 "See ([`application.yml:122-169`](../../src/main/resources/application.yml)) for the flags.",
-                "    Note over PC,EV: EOP-14 Slice E, PlayCardUseCase.java:253.<br/>After the writes");
+                "    Note over PC,EV: EOP-14 Slice E, PlayCardPort.java:253.<br/>After the writes");
 
         final List<Citation> found = citations(Path.of("synthetic.md"), prose);
 
         assertThat(found).hasSize(4);
-        assertThat(found.get(0).citedPath()).isEqualTo("PlayCardUseCase.java");
+        assertThat(found.get(0).citedPath()).isEqualTo("PlayCardPort.java");
         assertThat(found.get(0).startLine()).isEqualTo(253);
         assertThat(found.get(0).endLine()).isEqualTo(253);
         assertThat(found.get(0).anchor()).isEqualTo("CARD_PLAYED");

@@ -148,7 +148,7 @@ class ConditionalOnPropertyHavingValueTest {
     @DisplayName("method-level annotations were actually discovered, the placement easiest to miss")
     void shouldDiscoverMethodLevelSites() {
         assertThat(sites().stream().filter(site -> !site.classLevel()).toList())
-                .as("Most gated beans in this repository are @Bean methods in UseCaseConfiguration, so a "
+                .as("Most gated beans in this repository are @Bean methods in ApplicationConfiguration, so a "
                         + "scanner blind to method-level annotations would miss the majority of sites while "
                         + "still passing the class-level guard. Found none")
                 .isNotEmpty();

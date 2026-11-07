@@ -5,7 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.UUID;
 
-import org.maglez.eop.entity.JoinCode;
+import org.maglez.eop.domain.JoinCode;
+
+import org.maglez.eop.domain.Player;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

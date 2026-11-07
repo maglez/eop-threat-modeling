@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
+
 /**
  * Holds ADR-065's role boundaries against the agent definitions themselves, so that an agent can no longer acquire a
  * permission by saying nothing about it.

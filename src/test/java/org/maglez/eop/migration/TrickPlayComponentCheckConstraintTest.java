@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.entity.TrickPlay;
+import org.maglez.eop.domain.TrickPlay;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

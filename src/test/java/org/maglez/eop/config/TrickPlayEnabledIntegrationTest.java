@@ -3,19 +3,20 @@ package org.maglez.eop.config;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.maglez.eop.adapter.web.EndSessionController;
-import org.maglez.eop.adapter.web.ScoreController;
-import org.maglez.eop.adapter.web.TrickController;
-import org.maglez.eop.usecase.DealHandsUseCase;
-import org.maglez.eop.usecase.EndSessionUseCase;
-import org.maglez.eop.usecase.GetScoreUseCase;
-import org.maglez.eop.usecase.GetTrickStateUseCase;
-import org.maglez.eop.usecase.PlayCardUseCase;
-import org.maglez.eop.usecase.ReadOwnHandUseCase;
-import org.maglez.eop.usecase.ResolveTrickUseCase;
+import org.maglez.eop.inbound.web.EndSessionController;
+import org.maglez.eop.inbound.web.ScoreController;
+import org.maglez.eop.inbound.web.TrickController;
+import org.maglez.eop.application.port.in.DealHandsPort;
+import org.maglez.eop.application.port.in.EndSessionPort;
+import org.maglez.eop.application.port.in.GetScorePort;
+import org.maglez.eop.application.port.in.GetTrickStatePort;
+import org.maglez.eop.application.port.in.PlayCardPort;
+import org.maglez.eop.application.port.in.ReadOwnHandPort;
+import org.maglez.eop.application.port.in.ResolveTrickPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.maglez.eop.domain.Trick;
 
 /**
  * Asserts that {@code eop.features.trick-play} produces the trick play beans when it is on.
@@ -51,8 +52,8 @@ class TrickPlayEnabledIntegrationTest {
     /** Asserts the deal use case is registered while the flag is on. */
     @Test
     @DisplayName("creates the deal hands use case")
-    void shouldRegisterTheDealHandsUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(DealHandsUseCase.class))
+    void shouldRegisterTheDealHandsPort() {
+        Assertions.assertThat(context.getBeanNamesForType(DealHandsPort.class))
                 .as("the flag is on for the suite, so the deal must be wired")
                 .isNotEmpty();
     }
@@ -60,8 +61,8 @@ class TrickPlayEnabledIntegrationTest {
     /** Asserts the play use case is registered while the flag is on. */
     @Test
     @DisplayName("creates the play card use case")
-    void shouldRegisterThePlayCardUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(PlayCardUseCase.class))
+    void shouldRegisterThePlayCardPort() {
+        Assertions.assertThat(context.getBeanNamesForType(PlayCardPort.class))
                 .as("the flag is on for the suite, so playing a card must be wired")
                 .isNotEmpty();
     }
@@ -69,8 +70,8 @@ class TrickPlayEnabledIntegrationTest {
     /** Asserts the resolve use case is registered while the flag is on. */
     @Test
     @DisplayName("creates the resolve trick use case")
-    void shouldRegisterTheResolveTrickUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(ResolveTrickUseCase.class))
+    void shouldRegisterTheResolveTrickPort() {
+        Assertions.assertThat(context.getBeanNamesForType(ResolveTrickPort.class))
                 .as("the flag is on for the suite, so resolving a trick must be wired")
                 .isNotEmpty();
     }
@@ -78,8 +79,8 @@ class TrickPlayEnabledIntegrationTest {
     /** Asserts the own-hand read use case is registered while the flag is on. */
     @Test
     @DisplayName("creates the read own hand use case")
-    void shouldRegisterTheReadOwnHandUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(ReadOwnHandUseCase.class))
+    void shouldRegisterTheReadOwnHandPort() {
+        Assertions.assertThat(context.getBeanNamesForType(ReadOwnHandPort.class))
                 .as("reading a hand is gated with the writers: with the flag off there are no hands to read")
                 .isNotEmpty();
     }
@@ -98,8 +99,8 @@ class TrickPlayEnabledIntegrationTest {
      */
     @Test
     @DisplayName("creates the trick state use case")
-    void shouldRegisterTheGetTrickStateUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(GetTrickStateUseCase.class))
+    void shouldRegisterTheGetTrickStatePort() {
+        Assertions.assertThat(context.getBeanNamesForType(GetTrickStatePort.class))
                 .as("without this bean no client can learn whose turn it is, so the flag would gate an unplayable game")
                 .isNotEmpty();
     }
@@ -122,8 +123,8 @@ class TrickPlayEnabledIntegrationTest {
      */
     @Test
     @DisplayName("creates the score use case")
-    void shouldRegisterTheGetScoreUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(GetScoreUseCase.class))
+    void shouldRegisterTheGetScorePort() {
+        Assertions.assertThat(context.getBeanNamesForType(GetScorePort.class))
                 .as("the flag is on for the suite, so the score must be wired")
                 .isNotEmpty();
     }
@@ -153,8 +154,8 @@ class TrickPlayEnabledIntegrationTest {
      */
     @Test
     @DisplayName("creates the end-session use case")
-    void shouldRegisterTheEndSessionUseCase() {
-        Assertions.assertThat(context.getBeanNamesForType(EndSessionUseCase.class))
+    void shouldRegisterTheEndSessionPort() {
+        Assertions.assertThat(context.getBeanNamesForType(EndSessionPort.class))
                 .as("the flag is on for the suite, so the end-session use case must be wired")
                 .isNotEmpty();
     }

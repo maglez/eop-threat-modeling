@@ -61,14 +61,14 @@ a use-case-level rejection, so the caller sees a 403-shaped refusal rather than 
 violation. **Slice C2 discharges that on the play path by construction rather than by a check, and
 Slice D preserves it across the HTTP boundary.**
 `PlayCardCommand` has no seat component and no player component at all
-(`PlayCardCommand.java:35-41`, argued at `:10-17`), so `PlayCardUseCase` derives the acting seat
-from the resolved player (`PlayCardUseCase.java:154-167`): a caller cannot name a seat it does not
+(`PlayCardCommand.java:35-41`, argued at `:10-17`), so `PlayCardService` derives the acting seat
+from the resolved player (`PlayCardService.java:154-167`): a caller cannot name a seat it does not
 hold, which makes the 403 with `NotYourSeatException` inexpressible from the outside rather than
 merely refused. `PlayCardRequest` — the request record Slice D adds — carries no seat, player, suit
 or rank either, so the property survives the one change that could have quietly undone it, and a
 test posts a body naming all four for an impostor and asserts the published play still carries the
 token's seat and the deck's suit. A caller outside the session is refused with
-`PlayerNotInSessionException` (`PlayCardUseCase.java:162-175`), a 404 chosen so the status does not
+`PlayerNotInSessionException` (`PlayCardService.java:162-175`), a 404 chosen so the status does not
 itself disclose that the session exists. If a future slice adds or alters an interaction, this
 paragraph is the first thing to correct — one version of it claimed EOP-10 two stories after that
 stopped being the whole truth, the version before last claimed Slice C1 one slice after the same
@@ -97,8 +97,8 @@ sequenceDiagram
     participant BR as Browser tab
     participant CY as Caddy
     participant SC as SessionController
-    participant RP as ResolvePlayerUseCase
-    participant GS as GetSessionStateUseCase
+    participant RP as ResolvePlayerService
+    participant GS as GetSessionStateService
     participant SRA as SessionRepositoryAdapter
     participant DB as PostgreSQL
 
@@ -286,11 +286,11 @@ sequenceDiagram
     autonumber
     participant BR as Browser tab
     participant SC as SessionController
-    participant RP as ResolvePlayerUseCase
+    participant RP as ResolvePlayerService
     participant PUB as SseSessionEventPublisher
     participant HB as sse-heartbeat daemon
     participant POOL as sse-send-N pool
-    participant JU as JoinSessionUseCase
+    participant JU as JoinSessionService
 
     rect rgb(238, 244, 250)
     Note over BR,PUB: Subscribe
@@ -303,7 +303,7 @@ sequenceDiagram
     else player not authorized
         RP-->>SC: PlayerNotRecognisedException
         SC-->>BR: 403 problem+json
-        Note over BR,SC: A problem detail, NOT an empty stream.<br/>resolvePlayerUseCase runs BEFORE subscribe.
+        Note over BR,SC: A problem detail, NOT an empty stream.<br/>resolvePlayerService runs BEFORE subscribe.
     else recognised
         RP-->>SC: ResolvedPlayer
         SC->>PUB: subscribe(sessionId)
@@ -348,12 +348,12 @@ sequenceDiagram
     end
 ```
 
-### Why `resolvePlayerUseCase` runs before `subscribe`
+### Why `resolvePlayerService` runs before `subscribe`
 
 The handler body is two statements, in this order, and the order is the design:
 
 ```java
-resolvePlayerUseCase.execute(sessionId, playerToken);
+resolvePlayerService.execute(sessionId, playerToken);
 return sessionEventPublisher.subscribe(sessionId);
 ```
 
@@ -438,7 +438,7 @@ sequenceDiagram
     participant CAR as ClientAddressResolver
     participant CLIM as InMemorySessionCreationLimiter
     participant LIM as InMemoryJoinAttemptLimiter
-    participant JU as JoinSessionUseCase
+    participant JU as JoinSessionService
     participant SRA as SessionRepositoryAdapter
     participant DB as PostgreSQL
     participant PUB as SseSessionEventPublisher
@@ -600,15 +600,15 @@ property does not cap request bodies and was deliberately not added).
 
 The first of the three sequences EOP-14 Slice C2 owed this document. It begins where
 sequence 3 ends: the session is already `IN_PROGRESS`, because
-`StartSessionUseCase` committed that transition in a separate request.
+`StartSessionService` committed that transition in a separate request.
 [ADR-025](../adr/ADR-025-dealing-is-its-own-use-case.md) argues that seam.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant CL as TrickController — POST /api/v1/sessions/{sessionId}/deal
-    participant DH as DealHandsUseCase
-    participant RP as ResolvePlayerUseCase
+    participant DH as DealHandsService
+    participant RP as ResolvePlayerService
     participant HD as HandDealer
     participant CRA as CardRepositoryAdapter
     participant SH as SecureRandomDeckShuffler
@@ -622,14 +622,14 @@ sequenceDiagram
     CL->>DH: execute(sessionId, playerToken)
 
     DH->>RP: execute(sessionId, playerToken)
-    Note over DH,RP: The first statement of the method,<br/>DealHandsUseCase.java:88. Nothing is<br/>read, shuffled or written before it.
+    Note over DH,RP: The first statement of the method,<br/>DealHandsService.java:93. Nothing is<br/>read, shuffled or written before it.
     RP-->>DH: ResolvedPlayer, or 404 SessionNotFoundException<br/>or 403 PlayerNotRecognisedException
 
     alt not the facilitator
         DH-->>CL: 403 NotFacilitatorException
     else may deal
         DH->>HD: deal(session)
-        Note over DH,HD: EOP-190 moved the deal itself into HandDealer,<br/>which NewGameUseCase calls too. DealHandsUseCase<br/>authorises and delegates and does nothing else.<br/>HandDealer authorises nobody, so it is never<br/>reached from an adapter (ADR-024).
+        Note over DH,HD: EOP-190 moved the deal itself into HandDealer,<br/>which NewGameService calls too. DealHandsService<br/>authorises and delegates and does nothing else.<br/>HandDealer authorises nobody, so it is never<br/>reached from an adapter (ADR-024).
         alt fewer than three seated
             HD-->>DH: TooFewPlayersException
             DH-->>CL: 409 TooFewPlayersException
@@ -699,7 +699,7 @@ canonical order means a test can pin a deal by pinning the shuffler.
 **The deal is broadcast, after it is durable.** `HandDealer` takes a
 `SessionEventPublisher` and publishes `HAND_DEALT` at `HandDealer.java:143` (anchor:
 `HAND_DEALT`), on the line after `recordDeal` returns. EOP-190 moved both the write and the
-announcement out of `DealHandsUseCase` and into that collaborator, so `NewGameUseCase` deals
+announcement out of `DealHandsService` and into that collaborator, so `NewGameService` deals
 by calling it rather than by holding a second copy of these six lines — the ordering below is
 therefore now asserted once and relied on twice. The ordering is the decision: a broadcast that preceded
 the write could announce a deal that then rolled back, and a publisher that threw could
@@ -724,8 +724,8 @@ a bad component name cannot leave an open trick behind it.
 sequenceDiagram
     autonumber
     participant CL as TrickController — POST /api/v1/sessions/{sessionId}/plays
-    participant PC as PlayCardUseCase
-    participant RP as ResolvePlayerUseCase
+    participant PC as PlayCardService
+    participant RP as ResolvePlayerService
     participant CRA as CardRepositoryAdapter
     participant TJ as TrickJournal
     participant TPRA as TrickPlayRepositoryAdapter
@@ -737,14 +737,14 @@ sequenceDiagram
 
     PC->>RP: execute(sessionId, playerToken)
     RP-->>PC: ResolvedPlayer, or 404 / 403
-    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardUseCase.java:154-167).
+    Note over PC: The acting seat and player id are taken from the<br/>resolved player and from nowhere else<br/>(PlayCardService.java:154-167).
 
     PC->>TPRA: findBySessionId(sessionId)
     TPRA->>DB: SELECT hand and hand_card for the session
     TPRA-->>PC: Hands, or empty which is 409 HandNotDealtException
-    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists<br/>(PlayCardUseCase.java:162-175).
+    Note over PC: A resolved player holding no seat in those hands<br/>is 404 PlayerNotInSessionException — the status<br/>does not confirm the session exists<br/>(PlayCardService.java:162-175).
     PC->>PC: hands.allEmpty() → 409 HandCompleteException
-    Note over PC: EOP-14 Slice E, PlayCardUseCase.java:165-177.<br/>Asked before the card is even looked up, so a play<br/>into a played-out hand is told the hand is over<br/>rather than that its card is not in it.
+    Note over PC: EOP-14 Slice E, PlayCardService.java:165-177.<br/>Asked before the card is even looked up, so a play<br/>into a played-out hand is told the hand is over<br/>rather than that its card is not in it.
 
     PC->>CRA: findById(cardId)
     CRA->>DB: SELECT from card WHERE id = ?
@@ -784,7 +784,7 @@ sequenceDiagram
     TPRA->>DB: DELETE from hand_card — 0 rows is 422 CardNotInHandException
     TPRA->>DB: INSERT trick_play, then one row per named component
     TJ->>EV: publish(CARD_PLAYED, sessionId, now)
-    Note over TJ,EV: EOP-14 Slice E, since EOP-190 at TrickJournal.java:125.<br/>Appended and announced in the one call, after the write returns,<br/>and carrying no card, no seat and no trick — a subscriber is told<br/>a play happened and re-reads GET /tricks/current to learn what it was.
+    Note over TJ,EV: EOP-14 Slice E, since EOP-190 at TrickJournal.java:134.<br/>Appended and announced in the one call, after the write returns,<br/>and carrying no card, no seat and no trick — a subscriber is told<br/>a play happened and re-reads GET /tricks/current to learn what it was.
     end
 
     PC-->>CL: the updated Trick
@@ -800,7 +800,7 @@ Without the turn-order guard, an out-of-turn opening play would commit a trick r
 only then be refused, leaving an open trick nobody may play into. Without
 `hand.resolve(card)`, a play of a card the seat does not hold would surface as an
 `IllegalStateException` and a 500 instead of a 422. Slice E added a third guard above the
-rect, `hands.allEmpty()` at `PlayCardUseCase.java:165-177`, for the same reason one step
+rect, `hands.allEmpty()` at `PlayCardService.java:165-177`, for the same reason one step
 earlier: a play into a hand that has been played out now answers 409 `HandCompleteException`
 rather than reporting that some particular card is not held, which was the only answer
 available before the end of a hand had a name.
@@ -825,9 +825,9 @@ the window**, which is why ADR-025 records the reasoning rather than only the co
 table, row by row against the method, in its decision 9.
 
 **The play is broadcast, after the writes.** Since EOP-190 the `SessionEventPublisher`
-is held by `TrickJournal` rather than by `PlayCardUseCase`, and the journal appends and
+is held by `TrickJournal` rather than by `PlayCardService`, and the journal appends and
 announces in the one call: `CARD_PLAYED` is published at
-`TrickJournal.java:125` (anchor: `CARD_PLAYED`), once `appendPlay` has returned. The event names the session and nothing else: not the card,
+`TrickJournal.java:134` (anchor: `CARD_PLAYED`), once `appendPlay` has returned. The event names the session and nothing else: not the card,
 not the seat, not the trick. That is what makes it safe on a fan-out transport where
 every subscriber of a session receives every event — the other players learn *that* the
 table moved and re-read `GET /tricks/current` to learn whose turn it now is, and a
@@ -845,8 +845,8 @@ exactly the position it was in before Slice E: it re-reads.
 sequenceDiagram
     autonumber
     participant CL as TrickController — POST /api/v1/sessions/{sessionId}/tricks/current/resolve
-    participant RT as ResolveTrickUseCase
-    participant RP as ResolvePlayerUseCase
+    participant RT as ResolveTrickService
+    participant RP as ResolvePlayerService
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
     participant EV as SessionEventPublisher
@@ -855,7 +855,7 @@ sequenceDiagram
 
     RT->>RP: execute(sessionId, playerToken)
     RP-->>RT: ResolvedPlayer, or 404 / 403
-    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used (ResolveTrickUseCase.java:127).<br/>Any member may resolve, because resolution is<br/>arithmetic and gating it on the facilitator<br/>would stall a table whose facilitator dropped.
+    Note over RT,RP: Membership only — the resolved player is not<br/>otherwise used (ResolveTrickService.java:127).<br/>Any member may resolve, because resolution is<br/>arithmetic and gating it on the facilitator<br/>would stall a table whose facilitator dropped.
 
     RT->>TPRA: findBySessionId(sessionId)
     TPRA-->>RT: Hands, or empty which is 409 HandNotDealtException
@@ -868,16 +868,16 @@ sequenceDiagram
         RT-->>CL: 409 TrickNotCompleteException — names the seat still to play
     else complete
         RT->>RT: trick.resolved() — highest card of the led suit takes it
-        RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickUseCase.java:146-157)
+        RT->>RT: the winning play must be one of this trick's plays,<br/>or 422 WinningPlayNotInTrickException (ResolveTrickService.java:146-157)
         RT->>RT: nextLeaderSeat = OptionalInt — the next seat still holding<br/>cards, or empty when the hand is played out
-        Note over RT: EOP-14 Slice E, ResolveTrickUseCase.java:154:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards)<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
+        Note over RT: EOP-14 Slice E, ResolveTrickService.java:154:<br/>final var nextLeaderSeat = resolved.nextLeaderSeat(seatsHoldingCards)<br/>The placeholder is gone. The port's next-leader parameter<br/>widened from int to OptionalInt (TrickRepository.java:163-164),<br/>so "nobody left to lead" is now a value the port can carry<br/>instead of a winning seat standing in for one.
         RT->>TPRA: recordResolution(sessionId, resolved, leaderSeat, nextLeaderSeat, now)
         TPRA->>DB: UPDATE game_session SET current_leader_seat = next, or NULL<br/>WHERE current_leader_seat = leaderSeat<br/>AND status = IN_PROGRESS
         Note over TPRA,DB: NULL is the end of the hand, recorded rather than<br/>released or scored at this point: the status transitions to<br/>COMPLETED in the next step when nextLeaderSeat is empty<br/>(EOP-15 Slice C, ADR-032). Changeset 005's CHECK<br/>already permitted NULL, so no migration was needed.
         TPRA->>DB: UPDATE trick SET winner_play_id = ?<br/>WHERE id = ? AND winner_play_id IS NULL
         Note over TPRA,DB: 0 rows on the second UPDATE is a replay, not a fault:<br/>when the leader also won, the first UPDATE is<br/>idempotent and lets a repeat through. Answered 409.
         RT->>EV: publish(TRICK_RESOLVED, sessionId, now)
-        Note over RT,EV: EOP-14 Slice E, ResolveTrickUseCase.java:140.<br/>After the write returns, and naming no winner and no<br/>seat — a subscriber re-reads GET /tricks/current, which<br/>is also where it learns that the hand is complete.
+        Note over RT,EV: EOP-14 Slice E, ResolveTrickService.java:140.<br/>After the write returns, and naming no winner and no<br/>seat — a subscriber re-reads GET /tricks/current, which<br/>is also where it learns that the hand is complete.
         RT-->>CL: the resolved Trick
     end
 ```
@@ -898,7 +898,7 @@ member of that session (ADR-005 for the problem-detail shape).
 
 **End of hand is recognised here, and the placeholder is gone.** When no seat holds a
 card, `Trick.nextLeaderSeat(seatsHoldingCards)` returns an empty `OptionalInt` and
-`ResolveTrickUseCase.java:154` passes it straight through, because
+`ResolveTrickService.java:154` passes it straight through, because
 `TrickRepository.recordResolution`'s next-leader parameter widened from `int` to
 `OptionalInt` (`TrickRepository.java:163-164`). `advanceLeaderSeat` then writes
 `current_leader_seat = NULL`. No migration was needed: changeset `005`'s CHECK already
@@ -914,9 +914,9 @@ gate on its own; a second deal into a played-out session is refused one statemen
 [ADR-020](../adr/ADR-020-session-concurrency-control.md) is amended with both that
 narrowing and the sixth answer `sessionMoved` gained to tell the two null states apart.
 What the NULL does *not* do on its own is finish the game: the session status stays
-`IN_PROGRESS` until `ResolveTrickUseCase` calls `SessionRepository.recordCompleted` in the
+`IN_PROGRESS` until `ResolveTrickService` calls `SessionRepository.recordCompleted` in the
 same execution, after `recordResolution` returns. A client learns the hand is over from
-`handComplete` on `GET .../tricks/current` — `GetTrickStateUseCase.java:114`, computed from
+`handComplete` on `GET .../tricks/current` — `GetTrickStateService.java:114`, computed from
 `Hands.allEmpty()` — or from a 409 `HandCompleteException` if it tries to play anyway. The
 `COMPLETED` transition and the `GAME_COMPLETED` event are sequence 8 below;
 [ADR-032](../adr/ADR-032-end-of-game-transitions.md) records the design choices and the
@@ -930,8 +930,8 @@ two-transaction race that the auto-complete branch tolerates.
 sequenceDiagram
     autonumber
     participant CL as ScoreController — GET /api/v1/sessions/{sessionId}/score
-    participant GS as GetScoreUseCase
-    participant RP as ResolvePlayerUseCase
+    participant GS as GetScoreService
+    participant RP as ResolvePlayerService
     participant TPRA as TrickPlayRepositoryAdapter
     participant DB as PostgreSQL
     participant SS as ScoreSheet — entity
@@ -1005,7 +1005,7 @@ reaches `COMPLETED` — automatically when the last trick resolves, or early via
 
 ## 8. Ending the game — automatic on last trick, or early by the facilitator
 
-Two paths lead to `COMPLETED`. The automatic path fires inside `ResolveTrickUseCase` when
+Two paths lead to `COMPLETED`. The automatic path fires inside `ResolveTrickService` when
 `nextLeaderSeat` is empty (sequence 6 above). The facilitator path is a separate HTTP call.
 Both are gated on `eop.features.trick-play`.
 
@@ -1013,8 +1013,8 @@ Both are gated on `eop.features.trick-play`.
 sequenceDiagram
     autonumber
     participant CL as EndSessionController — POST /api/v1/sessions/{sessionId}/end
-    participant ES as EndSessionUseCase
-    participant RP as ResolvePlayerUseCase
+    participant ES as EndSessionService
+    participant RP as ResolvePlayerService
     participant SRA as SessionRepositoryAdapter
     participant DB as PostgreSQL
     participant EV as SseSessionEventPublisher
@@ -1041,7 +1041,7 @@ sequenceDiagram
 
 ### Automatic path (inside sequence 6)
 
-When `nextLeaderSeat` is empty after `recordResolution` commits, `ResolveTrickUseCase`
+When `nextLeaderSeat` is empty after `recordResolution` commits, `ResolveTrickService`
 calls `recordCompleted` and publishes `GAME_COMPLETED` in the same execution — but in a
 **second, separate transaction**. If a facilitator's `POST /end` wins the `advanceStatus`
 race in the window between the two commits, `recordCompleted` finds zero rows and would
@@ -1095,13 +1095,13 @@ with neither a Start button nor a "game has started" notice, indefinitely.
 **Precondition:** `eop.features.session-lifecycle=true` (flag off → `ExpiredSessionSweepScheduler`
 bean absent, sweep never fires). One or more sessions have `expires_at < now`.
 
-**Actors:** `ExpiredSessionSweepScheduler` (Spring `@Scheduled` adapter), `SweepExpiredSessionsUseCase`,
+**Actors:** `ExpiredSessionSweepScheduler` (Spring `@Scheduled` adapter), `SweepExpiredSessionsService`,
 `SessionRepositoryAdapter`, PostgreSQL.
 
 ```mermaid
 sequenceDiagram
     participant SCHED as ExpiredSessionSweepScheduler
-    participant UC as SweepExpiredSessionsUseCase
+    participant UC as SweepExpiredSessionsService
     participant SRA as SessionRepositoryAdapter
     participant DB as PostgreSQL
 
@@ -1131,24 +1131,24 @@ sequenceDiagram
 
 ### What this sequence settles
 
-**The sweep is a background driver, not a domain rule.** `SweepExpiredSessionsUseCase` owns the
+**The sweep is a background driver, not a domain rule.** `SweepExpiredSessionsService` owns the
 policy (which sessions to delete, how to handle per-session failures); `ExpiredSessionSweepScheduler`
 owns only the trigger. The use case is testable without Spring; the scheduler is a thin adapter.
 
-**Expiry is enforced at the `ResolvePlayerUseCase` boundary.** `ResolvePlayerUseCase` rejects any
+**Expiry is enforced at the `ResolvePlayerService` boundary.** `ResolvePlayerService` rejects any
 request whose session has `expiresAt < now(clock)` with 403 `"Session expired"`. The sweep then
 removes the row so it does not accumulate indefinitely. The two checks are independent: the guard
 fires on every authenticated request; the sweep fires on a schedule.
 
-**Accepted limitation — the join path is not guarded.** `JoinSessionUseCase` does not check
+**Accepted limitation — the join path is not guarded.** `JoinSessionService` does not check
 `session.expiresAt()`. A player can join an expired `LOBBY` session via join code and receive a
-token; that token will be rejected by `ResolvePlayerUseCase` on the next call. The gap is
+token; that token will be rejected by `ResolvePlayerService` on the next call. The gap is
 documented in ADR-036 and deferred to a future story.
 
 **The ABANDONED write is not observable.** `markAbandoned` and `deleteById` share a transaction, so
 no row ever commits with `status = ABANDONED`. The UPDATE exists to bump the version column (optimistic
 locking) and to make the intent legible in the code; the net committed effect is the delete. The
-`LOG.info` line in `SweepExpiredSessionsUseCase` is the only audit record that a session was swept.
+`LOG.info` line in `SweepExpiredSessionsService` is the only audit record that a session was swept.
 
 **Single-instance assumption.** Two replicas sweeping the same ID set concurrently will both attempt
 the same deletes; the second attempt is silently ignored — `deleteById` on a missing row is a no-op
@@ -1188,7 +1188,7 @@ sequenceDiagram
 
     P->>G: pointerup over drop zone, or Enter/Space + button click
     G->>API: POST /api/v1/sessions/{sessionId}/plays<br/>X-EoP-Player-Token: {token}<br/>body: { cardId }
-    Note over API: ResolvePlayerUseCase derives acting seat<br/>from token — no seat in the request body.<br/>PlayCardUseCase checks turn order, removes<br/>card from hand, appends play.
+    Note over API: ResolvePlayerService derives acting seat<br/>from token — no seat in the request body.<br/>PlayCardService checks turn order, removes<br/>card from hand, appends play.
     API->>DB: DELETE hand_card, INSERT trick_play (one transaction)
     DB-->>API: ok
     API-->>G: 200 TrickDto (own response)
@@ -1223,12 +1223,12 @@ header rather than a query parameter — the same reasoning as ADR-015 and ADR-0
 
 **Turn enforcement is server-side.** The client disables cards and hides the play button
 when `seatToPlay` does not match the player's seat, but this is a UX convenience only.
-`PlayCardUseCase` derives the acting seat from the resolved token and throws
+`PlayCardService` derives the acting seat from the resolved token and throws
 `OutOfTurnException` (409) if it does not match the current leader seat. A caller cannot
 name a seat it does not hold — `PlayCardRequest` carries no seat field.
 
 **The winner banner fires on `trickState.complete`, not on a client-side count.** The
-`complete` flag on `TrickStateDto` is computed by `GetTrickStateUseCase` from
+`complete` flag on `TrickStateDto` is computed by `GetTrickStateService` from
 `Hands.allEmpty()` and the trick's play count; the client reads it, never derives it.
 
 ---
@@ -1242,8 +1242,8 @@ sequenceDiagram
     participant Browser
     participant ReadRateLimitInterceptor
     participant GameOverController
-    participant GetLeaderboardUseCase
-    participant ResolvePlayerUseCase
+    participant GetLeaderboardService
+    participant ResolvePlayerService
     participant SessionRepository
     participant GameResultRepository
     participant TrickRepository
@@ -1253,17 +1253,17 @@ sequenceDiagram
     Note over ReadRateLimitInterceptor: Counted in preHandle, so a refusal costs no query at all.<br/>Keyed on the resolved client address, never a request header and never the player token (EOP-88, ADR-051).
     ReadRateLimitInterceptor-->>Browser: 429 problem+json with Retry-After (window full)
     ReadRateLimitInterceptor->>GameOverController: preHandle true, request proceeds
-    GameOverController->>GetLeaderboardUseCase: execute(sessionId, playerToken)
-    GetLeaderboardUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
-    ResolvePlayerUseCase->>SessionRepository: findById(sessionId)
-    SessionRepository-->>ResolvePlayerUseCase: session (else 404 Session not found)
-    ResolvePlayerUseCase-->>GetLeaderboardUseCase: ResolvedPlayer
-    GetLeaderboardUseCase->>GetLeaderboardUseCase: check status == COMPLETED (else 409)
-    GetLeaderboardUseCase->>GameResultRepository: findBySessionId(sessionId)
-    GameResultRepository-->>GetLeaderboardUseCase: GameResult (else 404 Game result not recorded)
-    GetLeaderboardUseCase->>TrickRepository: findTricks(sessionId)
-    TrickRepository-->>GetLeaderboardUseCase: List<Trick>
-    GetLeaderboardUseCase-->>GameOverController: LeaderboardResult(sessionStatus, scoreSheet)
+    GameOverController->>GetLeaderboardService: execute(sessionId, playerToken)
+    GetLeaderboardService->>ResolvePlayerService: execute(sessionId, playerToken)
+    ResolvePlayerService->>SessionRepository: findById(sessionId)
+    SessionRepository-->>ResolvePlayerService: session (else 404 Session not found)
+    ResolvePlayerService-->>GetLeaderboardService: ResolvedPlayer
+    GetLeaderboardService->>GetLeaderboardService: check status == COMPLETED (else 409)
+    GetLeaderboardService->>GameResultRepository: findBySessionId(sessionId)
+    GameResultRepository-->>GetLeaderboardService: GameResult (else 404 Game result not recorded)
+    GetLeaderboardService->>TrickRepository: findTricks(sessionId)
+    TrickRepository-->>GetLeaderboardService: List<Trick>
+    GetLeaderboardService-->>GameOverController: LeaderboardResult(sessionStatus, scoreSheet)
     GameOverController-->>Browser: 200 LeaderboardDto (scores derived from live tricks, ADR-030)
 ```
 
@@ -1285,7 +1285,7 @@ component that no consumer read.
 
 The `sessionStatus` in the response is the status read off the resolved session and carried out
 through `LeaderboardResult`, not a literal written by the adapter. Until EOP-87 `GameOverController`
-wrote `"COMPLETED"` itself, which was correct only because `GetLeaderboardUseCase` refuses every
+wrote `"COMPLETED"` itself, which was correct only because `GetLeaderboardService` refuses every
 other status one step earlier — a temporal coupling that would have started lying silently the
 moment that guard was relaxed.
 
@@ -1300,26 +1300,26 @@ Non-atomic four-step sequence (ADR-039).
 sequenceDiagram
     participant Browser
     participant GameOverController
-    participant NewGameUseCase
-    participant ResolvePlayerUseCase
+    participant NewGameService
+    participant ResolvePlayerService
     participant TrickRepository
     participant HandRepository
     participant SessionRepository
     participant SessionEventPublisher
 
     Browser->>GameOverController: POST /new-game (X-Player-Token)
-    GameOverController->>NewGameUseCase: execute(sessionId, playerToken)
-    NewGameUseCase->>ResolvePlayerUseCase: execute(sessionId, playerToken)
-    ResolvePlayerUseCase-->>NewGameUseCase: ResolvedPlayer
-    NewGameUseCase->>NewGameUseCase: check facilitator role (else 403)
-    NewGameUseCase->>NewGameUseCase: check status == COMPLETED (else 409)
-    Note over NewGameUseCase: Non-atomic steps begin (ADR-039)
-    NewGameUseCase->>TrickRepository: clearTricksForNewGame(sessionId)
-    NewGameUseCase->>HandRepository: clearHandsForNewGame(sessionId)
-    NewGameUseCase->>SessionRepository: resetToInProgress(sessionId, now)
+    GameOverController->>NewGameService: execute(sessionId, playerToken)
+    NewGameService->>ResolvePlayerService: execute(sessionId, playerToken)
+    ResolvePlayerService-->>NewGameService: ResolvedPlayer
+    NewGameService->>NewGameService: check facilitator role (else 403)
+    NewGameService->>NewGameService: check status == COMPLETED (else 409)
+    Note over NewGameService: Non-atomic steps begin (ADR-039)
+    NewGameService->>TrickRepository: clearTricksForNewGame(sessionId)
+    NewGameService->>HandRepository: clearHandsForNewGame(sessionId)
+    NewGameService->>SessionRepository: resetToInProgress(sessionId, now)
     Note over SessionRepository: CAS: WHERE status='COMPLETED'
-    NewGameUseCase->>HandRepository: recordDeal(sessionId, hands, leaderSeat, now)
-    NewGameUseCase->>SessionEventPublisher: publish(HAND_DEALT)
+    NewGameService->>HandRepository: recordDeal(sessionId, hands, leaderSeat, now)
+    NewGameService->>SessionEventPublisher: publish(HAND_DEALT)
     GameOverController-->>Browser: 204 No Content
 ```
 

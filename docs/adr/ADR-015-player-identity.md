@@ -183,7 +183,7 @@ endpoint, an expiry, and a second credential to reason about in the threat model
 **Why the alternative — releasing a seat whose subscriber has been absent beyond
 a threshold — was also rejected, and is the one that would need its own ADR.** It
 requires a way to vacate a seat, which `SessionRepository` deliberately does not
-offer; `JoinSessionUseCase.java:54` (anchor: `MAXIMUM_SEAT_ATTEMPTS`) records
+offer; `JoinSessionService.java:65` (anchor: `MAXIMUM_SEAT_ATTEMPTS`) records
 that adding one "would make that path routine over HTTP", calls it a deliberate
 design change rather than tuning, and notes `JoinSessionUseCaseTest` pins the
 relationship so it cannot happen silently. It also collides with the reconnect
@@ -199,7 +199,7 @@ cosmetic and is not being waved away. It occupies a row, so it counts in both
 directions of the seat arithmetic: towards `MAXIMUM_PLAYERS`, and towards the
 minimum-to-start check at
 `GameSession.java:246` (anchor: `MINIMUM_PLAYERS_TO_START`) — the same rule restated at
-`HandDealer.java:123` and `NewGameUseCase.java:119`, both counting **rows rather
+`HandDealer.java:123` and `NewGameService.java:119`, both counting **rows rather
 than live participants**. A lobby can therefore show six occupied seats with five
 people present, and can be started with two humans and one ghost. The worst case
 is a **stalled** game, because turn order walks seat order and a ghost never

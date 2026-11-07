@@ -6,18 +6,19 @@ arc42 Section 5 — Static Decomposition
 
 ## 1. Application Layers
 
-This project follows Clean Architecture. Dependencies point inward:
+This project follows Hexagonal Architecture (ports & adapters). Dependencies point inward:
 
 ```
-Frameworks & Drivers  →  Interface Adapters  →  Use Cases  →  Entities
+Adapters (inbound/outbound)  →  Ports (application/port/in|out)  →  Services + Domain
 ```
 
 | Layer | Package root | Permitted dependencies |
 |---|---|---|
-| Entities | `org.maglez.eop.entity` | None (pure Java) |
-| Use Cases | `org.maglez.eop.usecase` | Entities only |
-| Interface Adapters | `org.maglez.eop.adapter` | Use Cases, Entities |
-| Config / Frameworks | `org.maglez.eop.config` | All layers; Spring permitted here only |
+| Domain | `org.maglez.eop.domain` | None (pure Java) |
+| Application ports | `org.maglez.eop.application.port.in` / `port.out` | Domain only |
+| Application services | `org.maglez.eop.application.service` | Ports, Domain |
+| Adapters | `org.maglez.eop.inbound.*`, `org.maglez.eop.outbound.*` | Ports, Domain; Spring permitted |
+| Config (composition root) | `org.maglez.eop.config` | All layers; Spring permitted here only |
 
 ---
 
