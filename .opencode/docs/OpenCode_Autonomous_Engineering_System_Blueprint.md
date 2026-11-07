@@ -422,6 +422,25 @@ MODEL_E=opencode/gemini-3.1-pro
 MODEL_F=opencode/minimax-m2.5
 MODEL_G=opencode/glm-5
 
+# === Go === (OpenCode Go subscription, via `/connect`; `opencode-go/<id>` ids)
+#MODEL_A=opencode-go/kimi-k3
+#MODEL_B=opencode-go/gpt-6-luna
+#MODEL_C=opencode-go/deepseek-v4.1-flash
+#MODEL_D=opencode-go/glm-5.3-flash
+#MODEL_E=opencode-go/deepseek-v4.1-flash
+#MODEL_F=opencode-go/glm-5.3
+#MODEL_G=opencode-go/muse-spark-1.3-contributor
+
+# === Go Free === (same provider, free models only — only three $0/$0 ids exist
+# at the time of writing, so tiers repeat; see `.env.example`)
+#MODEL_A=opencode-go/crouton-alpha-free
+#MODEL_B=opencode-go/beam-free
+#MODEL_C=opencode-go/iceman-contributor-free
+#MODEL_D=opencode-go/iceman-contributor-free
+#MODEL_E=opencode-go/iceman-contributor-free
+#MODEL_F=opencode-go/crouton-alpha-free
+#MODEL_G=opencode-go/beam-free
+
 # === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
 # MODEL_A=amazon-bedrock/global.anthropic.claude-opus-5
 # MODEL_B=amazon-bedrock/eu.anthropic.claude-sonnet-4-6
@@ -432,7 +451,7 @@ MODEL_G=opencode/glm-5
 # MODEL_G=amazon-bedrock/zai.glm-5
 ```
 
-> `./tools/switch-provider.sh [zen|bedrock]` toggles which block is commented. It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
+> `./tools/switch-provider.sh [zen|bedrock|go|go-free]` toggles which block is commented (`go --free-only` is the same as `go-free`). It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Go ===`, `# === Go Free ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
 
 
 ##### To Switch Providers
