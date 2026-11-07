@@ -147,14 +147,13 @@ interface CardFaceProps {
   readonly selected: boolean;
   readonly disabled: boolean;
   readonly dragging: boolean;
-  readonly magnifierEnabled: boolean;
   readonly onSelect: () => void;
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
 }
 
-function CardFace({ card, selected, disabled, dragging, magnifierEnabled, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
+function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
   const [focused, setFocused] = React.useState(false);
-  const magnifier = useCardMagnifier(magnifierEnabled);
+  const magnifier = useCardMagnifier();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -253,7 +252,6 @@ const TRICK_CARD_PADDING_PX = 4;
 
 interface TrickCardFaceProps {
   readonly card: CardDto;
-  readonly magnifierEnabled: boolean;
 }
 
 /**
@@ -264,11 +262,11 @@ interface TrickCardFaceProps {
  * magnifier hook; a hook cannot be called inside the `.map` that renders the
  * plays. The rendered DOM is unchanged from the inline version.
  *
- * @param props the played card and whether the magnifier is switched on
+ * @param props the played card
  * @return the trick-zone card
  */
-function TrickCardFace({ card, magnifierEnabled }: TrickCardFaceProps): React.JSX.Element {
-  const magnifier = useCardMagnifier(magnifierEnabled);
+function TrickCardFace({ card }: TrickCardFaceProps): React.JSX.Element {
+  const magnifier = useCardMagnifier();
 
   const body = (
     <CardBody
@@ -384,13 +382,6 @@ export function GameScreen({
   onSessionEnd,
   onGameOver,
 }: GameScreenProps): React.JSX.Element {
-  // Feature flag — read at component scope so that `vi.stubEnv` can reach it in
-  // tests. Read at module scope it would be captured once at import time, and
-  // the flag-off test would silently exercise whatever position the developer's
-  // .env.local happens to hold. The `=== 'true'` comparison is what makes an
-  // unset variable fail closed (ADR-037).
-  const isCardMagnifierEnabled = import.meta.env.VITE_CARD_MAGNIFIER_ENABLED === 'true';
-
   // Feature flag — same contract as above: component scope, not module scope,
   // and compared with === 'true' so that an unset variable fails closed
   // (ADR-037). Threaded into FollowSuitHint rather than used to decide whether
@@ -851,7 +842,7 @@ export function GameScreen({
                     <span className="govuk-body-s" style={{ fontSize: '11px' }}>
                       {playedByPlayer?.displayName ?? 'Unknown'}
                     </span>
-                    <TrickCardFace card={play.card} magnifierEnabled={isCardMagnifierEnabled} />
+                    <TrickCardFace card={play.card} />
                   </div>
                 );
               })}
@@ -879,7 +870,6 @@ export function GameScreen({
                 selected={selectedCardId === card.cardId}
                 disabled={!isMyTurn || isPlayingCard}
                 dragging={dragState?.cardId === card.cardId}
-                magnifierEnabled={isCardMagnifierEnabled}
                 onSelect={() => {
                   if (!isMyTurn || isPlayingCard) return;
                   setSelectedCardId(prev => prev === card.cardId ? null : card.cardId);

@@ -12,9 +12,10 @@ import * as api from '../api';
  * each surface subscribes to, whether a drag suppresses the lens, and whether a
  * disabled card still magnifies. A hook test would pass with all of that wrong.
  *
- * The flag is stubbed explicitly in every test. A developer's .env.local may set
- * VITE_CARD_MAGNIFIER_ENABLED either way, and an unstubbed test would silently
- * assert whatever position that file happens to hold.
+ * The lens is always on: the former VITE_CARD_MAGNIFIER_ENABLED flag was
+ * retired because it left the lens inert in every run path that did not pass
+ * the build argument. No env stub is needed — and deliberately none is set
+ * here, so these tests prove the lens appears with no flag configured at all.
  */
 describe('CardMagnifier', () => {
   const mockSession: api.SessionStateDto = {
@@ -96,9 +97,8 @@ describe('CardMagnifier', () => {
     vi.restoreAllMocks();
   });
 
-  describe('when the flag is on', () => {
+  describe('the lens', () => {
     beforeEach(() => {
-      vi.stubEnv('VITE_CARD_MAGNIFIER_ENABLED', 'true');
       vi.stubEnv('VITE_GAME_SCREEN_ENABLED', 'true');
     });
 
@@ -125,11 +125,12 @@ describe('CardMagnifier', () => {
     });
 
     it('pins the agreed lens dimensions, so a change to them is a deliberate act', () => {
-      // The product decision was a 2x lens, revised down from 3x during discovery.
-      // Every other geometry assertion in this file uses literals, so this is the
-      // one place a reader can see the agreed numbers, and the one place that
-      // fails if somebody edits them without revisiting the story.
-      expect(LENS_ZOOM).toBe(2);
+      // The user asked for twice the original 2x magnification after playing
+      // with it, so the lens is now 4x. Every other geometry assertion in this
+      // file uses literals, so this is the one place a reader can see the
+      // agreed numbers, and the one place that fails if somebody edits them
+      // without revisiting the story.
+      expect(LENS_ZOOM).toBe(4);
       expect(LENS_DIAMETER_PX).toBe(100);
       expect(LENS_BORDER_PX).toBe(2);
     });
@@ -155,18 +156,18 @@ describe('CardMagnifier', () => {
       fireEvent.pointerMove(card, { pointerType: 'mouse', clientX: 40, clientY: 60 });
 
       const replica = lens()?.firstElementChild as HTMLElement | undefined;
-      expect(replica?.style.transform).toBe('scale(2)');
+      expect(replica?.style.transform).toBe('scale(4)');
       expect(replica?.style.transformOrigin).toBe('0 0');
       // The replica offset is the actual lens maths, and it is the one thing a
       // sign error would break invisibly. An absolutely positioned child is laid
       // out against the PADDING box, which sits one border width inside the lens
       // box, so the offset carries a - LENS_BORDER_PX correction:
-      //   left = radius - zoom * x - border = 50 - 2*40 - 2 = -32
-      //   top  = radius - zoom * y - border = 50 - 2*60 - 2 = -72
+      //   left = radius - zoom * x - border = 50 - 4*40 - 2 = -112
+      //   top  = radius - zoom * y - border = 50 - 4*60 - 2 = -192
       // Drop the border term and the whole magnified image shifts by the ring
       // width, which is exactly the bug these two lines exist to catch.
-      expect(replica?.style.left).toBe('-32px');
-      expect(replica?.style.top).toBe('-72px');
+      expect(replica?.style.left).toBe('-112px');
+      expect(replica?.style.top).toBe('-192px');
     });
 
     it('keeps the lens out of the accessibility tree and out of the tab order', async () => {
@@ -324,68 +325,6 @@ describe('CardMagnifier', () => {
 
       const removed = removeSpy.mock.calls.filter((call) => call[0] === 'pointerdown' && call[2] === true);
       expect(removed.length).toBe(added.length);
-    });
-
-    it('drops a pinned lens when the flag is turned off underneath it', async () => {
-      stubApi([spoofingKing]);
-      const { rerender } = render(<GameScreen {...defaultProps} />);
-      const card = await waitForHand();
-
-      fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 40, clientY: 60 });
-      expect(lens()).not.toBeNull();
-
-      // The flag is read at component scope, so a re-render re-reads it. Without
-      // the enabled-goes-false effect a lens pinned before the flip would stay on
-      // screen for the rest of the session with no way to dismiss it.
-      vi.stubEnv('VITE_CARD_MAGNIFIER_ENABLED', 'false');
-      rerender(<GameScreen {...defaultProps} />);
-
-      expect(lens()).toBeNull();
-    });
-  });
-
-  describe('when the flag is off', () => {
-    beforeEach(() => {
-      vi.stubEnv('VITE_CARD_MAGNIFIER_ENABLED', 'false');
-      vi.stubEnv('VITE_GAME_SCREEN_ENABLED', 'true');
-    });
-
-    it('never shows a lens on hover', async () => {
-      stubApi([spoofingKing]);
-      render(<GameScreen {...defaultProps} />);
-      const card = await waitForHand();
-
-      fireEvent.pointerMove(card, { pointerType: 'mouse', clientX: 40, clientY: 60 });
-
-      expect(lens()).toBeNull();
-    });
-
-    it('never shows a lens on a touch tap, and still selects the card', async () => {
-      stubApi([spoofingKing]);
-      render(<GameScreen {...defaultProps} />);
-      const card = await waitForHand();
-
-      fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 40, clientY: 60 });
-      fireEvent.click(card);
-
-      expect(lens()).toBeNull();
-      expect(card.getAttribute('aria-pressed')).toBe('true');
-    });
-  });
-
-  describe('when the flag is unset', () => {
-    it('fails closed', async () => {
-      // ADR-037: the `=== 'true'` comparison means an absent variable disables
-      // the feature rather than enabling it.
-      vi.stubEnv('VITE_CARD_MAGNIFIER_ENABLED', '');
-      vi.stubEnv('VITE_GAME_SCREEN_ENABLED', 'true');
-      stubApi([spoofingKing]);
-      render(<GameScreen {...defaultProps} />);
-      const card = await waitForHand();
-
-      fireEvent.pointerMove(card, { pointerType: 'mouse', clientX: 40, clientY: 60 });
-
-      expect(lens()).toBeNull();
     });
   });
 });
