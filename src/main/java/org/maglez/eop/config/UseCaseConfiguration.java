@@ -419,6 +419,8 @@ public class UseCaseConfiguration {
      * @param resolvePlayerUseCase the use case that turns a token into a named player
      * @param sessionRepository the port the session status is advanced through
      * @param sessionEventPublisher the transport that announces the completion to connected clients
+     * @param persistGameResultUseCase writes the final standings, so the leaderboard answers
+     *     after an early end exactly as it does after the last trick resolves
      * @param clock the clock the completed timestamp is read from
      * @return the end-session use case
      */
@@ -428,8 +430,14 @@ public class UseCaseConfiguration {
             final ResolvePlayerUseCase resolvePlayerUseCase,
             final SessionRepository sessionRepository,
             final SessionEventPublisher sessionEventPublisher,
+            final PersistGameResultUseCase persistGameResultUseCase,
             final Clock clock) {
-        return new EndSessionUseCase(sessionRepository, resolvePlayerUseCase, sessionEventPublisher, clock);
+        return new EndSessionUseCase(
+                sessionRepository,
+                resolvePlayerUseCase,
+                sessionEventPublisher,
+                Optional.of(persistGameResultUseCase),
+                clock);
     }
 
     /**

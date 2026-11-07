@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.maglez.eop.usecase.PersistGameResultUseCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -47,6 +48,9 @@ class GameOverControllerIntegrationTest {
 
     @Autowired
     private PersistGameResultUseCase persistGameResultUseCase;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Nested
     @DisplayName("GET /leaderboard — reading the leaderboard")
@@ -357,14 +361,14 @@ class GameOverControllerIntegrationTest {
     }
 
     /**
-     * Creates a session with three players, starts it, and ends it via POST /end — leaving the
-     * session {@code COMPLETED} with no recorded game result.
+     * Creates a session with three players, starts it, ends it via POST /end and removes the
+     * recorded game result, leaving the session {@code COMPLETED} with no result row.
      *
-     * <p>This is not a contrived state reachable only from a test. {@code EndSessionUseCase} records
-     * the completion and deliberately does not write a result, because it stops play before every
-     * card has been played and there is no final standing to record. Every session a facilitator
-     * ends early sits here permanently, which is exactly why {@link #completedTable()} has to call
-     * the persister by hand afterwards to reach the happy path at all.
+     * <p>Since EOP-256 {@code EndSessionUseCase} persists the result on the early-end path, so
+     * POST /end alone no longer leaves this state. The delete restores it: it stands for a session
+     * completed before the fix, or one whose best-effort persistence failed and was logged while
+     * the session still completed. {@link #completedTable()} calls this then persists by hand
+     * afterwards to reach the happy path.
      *
      * @return a table whose session is completed with no result row
      */
@@ -373,6 +377,13 @@ class GameOverControllerIntegrationTest {
         mockMvc.perform(post(SESSIONS + "/" + table.sessionId() + "/end")
                         .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
                 .andExpect(status().isNoContent());
+        jdbcTemplate.update(
+                "DELETE FROM game_result_player WHERE game_result_id IN "
+                        + "(SELECT id FROM game_result WHERE game_session_id = ?)",
+                UUID.fromString(table.sessionId()));
+        jdbcTemplate.update(
+                "DELETE FROM game_result WHERE game_session_id = ?",
+                UUID.fromString(table.sessionId()));
         return table;
     }
 

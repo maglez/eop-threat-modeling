@@ -72,6 +72,18 @@ class EndSessionControllerIntegrationTest {
         }
 
         @Test
+        @DisplayName("records a game result, so the leaderboard answers after an early end")
+        void shouldRecordAGameResultSoTheLeaderboardAnswers() throws Exception {
+            final var table = startedTable();
+
+            endSession(table.sessionId(), table.facilitator().playerToken());
+
+            mockMvc.perform(get(SESSIONS + "/" + table.sessionId() + "/leaderboard")
+                            .header(SessionController.PLAYER_TOKEN_HEADER, table.facilitator().playerToken()))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
         @DisplayName("refuses a participant, because ending early is the facilitator's job")
         void shouldRefuseAParticipant() throws Exception {
             final var table = startedTable();
