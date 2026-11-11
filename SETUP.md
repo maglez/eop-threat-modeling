@@ -269,18 +269,19 @@ is spent, and citing this section as a live control is now wrong.*
   custom provider block in `.opencode/opencode.json`. That block was deleted
   when the project moved to OpenCode Zen, which is a built-in provider
   (id `opencode`) requiring no SDK dependency and no endpoint env var.
-- **`npm audit` residual: 3 critical / 8 high / 6 moderate / 1 low, carrying
-  13 distinct advisories** — *measured 2026-11-07 against the six exact pins
-  now current (EOP-257/258/259). It supersedes a 2026-08-20 snapshot of
-  0/1/1/7 carrying 14 distinct advisories against the seven pins that
-  included `@tarquinen/opencode-smart-title`, removed by EOP-257 — that
-  removal took the package count from 210 to 152 and deleted the four gated
-  advisories that arrived with it.* Read the counts for what they are before
-  drawing a conclusion: npm's `metadata.vulnerabilities` counts **packages at
-  their worst severity**, not advisories, which is why one "high" package
-  carries three high advisories. The residual splits into two groups, and only
-  the first is gated.
-  1. **Nine high/critical advisories, allowlisted by ID.**
+- **`npm audit` residual: 3 critical / 5 high / 7 moderate / 2 low, carrying
+  15 distinct advisories** — *measured 2026-11-11 against the six exact pins
+  now current. It supersedes the 2026-11-07 snapshot of 3/8/6/1 carrying 13
+  distinct advisories, and a 2026-08-20 snapshot of 0/1/1/7 carrying 14
+  distinct advisories against the seven pins that included
+  `@tarquinen/opencode-smart-title`, removed by EOP-257 — that removal took
+  the package count from 210 to 152 and deleted the four gated advisories
+  that arrived with it.* Read the counts for what they are before drawing a
+  conclusion: npm's `metadata.vulnerabilities` counts **packages at their
+  worst severity**, not advisories, which is why one "high" package carries
+  four high advisories. The residual splits into two groups, and only the
+  first is gated.
+  1. **Ten high/critical advisories, allowlisted by ID.**
      **Five against `seroval@1.5.6`** — one critical
      ([GHSA-p6vx-979v-rg4c](https://github.com/advisories/GHSA-p6vx-979v-rg4c),
      fromJSON() Promise thenable assimilation) and four high
@@ -297,15 +298,18 @@ is spent, and citing this section as a live control is now wrong.*
      in seroval's **deserialisation path**, unreachable here because seroval is
      imported only by `solid-js/web/dist/server.js`, the SSR entry, which the
      terminal-UI tree never loads.
-     **Three highs against `toml@4.3.0`** —
+     **Four highs against `toml@4.3.0`** —
      [GHSA-4qx8-w7c3-pj3p](https://github.com/advisories/GHSA-4qx8-w7c3-pj3p),
      [GHSA-9j65-hcg3-gc64](https://github.com/advisories/GHSA-9j65-hcg3-gc64),
-     [GHSA-9qmh-m7c6-f92p](https://github.com/advisories/GHSA-9qmh-m7c6-f92p) —
+     [GHSA-9qmh-m7c6-f92p](https://github.com/advisories/GHSA-9qmh-m7c6-f92p),
+     [GHSA-h895-cgqg-jf52](https://github.com/advisories/GHSA-h895-cgqg-jf52) —
      arrived through `@opencode-ai/plugin@1.19.5` → `effect@4.0.0-beta.83` →
-     `toml ^4.1.1`. **No fixed release exists**: the newest plugin and the
-     newest effect 4.x both still declare a vulnerable range (≤5.0.0 covers
-     every 4.x) (EOP-259). All three are `toml.parse()` DoS defects,
-     unreachable because toml is required only by
+     `toml ^4.1.1`. **No in-range fix exists**: plugin 1.19.5 remains the
+     newest release and pins that Effect release exactly, whose `^4.1.1`
+     range cannot select the patched TOML 5.0.1 (EOP-259, re-verified under
+     EOP-258). Three are `toml.parse()` DoS defects and the fourth is
+     prototype pollution through the same parse entry point, all unreachable
+     because toml is required only by
      `effect/dist/unstable/cli/Primitive.js:353`, which nothing outside
      `effect/` reaches.
      **One high against `zod`** —
@@ -317,11 +321,11 @@ is spent, and citing this section as a live control is now wrong.*
      remains, so the advisory would keep being reported (EOP-259).
      Unreachable because no schema-validation call exists in the tree:
      `tool.schema = z` constructs only, goal-plugin's import is dead, and the
-     only parses present are `JSON.parse` and `flagSpec.parse`. All nine are
+     only parses present are `JSON.parse` and `flagSpec.parse`. All ten are
      recorded with their traces in
      `tools/supply-chain/accepted-advisories.json` and gated against it.
   2. **The moderates and the one low are ungated.** They are the
-     `@babel/core` low plus `glob`/`minimatch` moderates, and one seroval
+     `@babel/core` low plus `glob`/`minimatch`/`effect` moderates, and one seroval
      moderate (GHSA-9wx9-5pv9-3349) sharing the SSR-only trace above.
      Accepted on the same three grounds as before: no forward fix;
      exploitation needs untrusted input that these build-time paths never

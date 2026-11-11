@@ -180,11 +180,11 @@ cat > "$workdir/fixture-missing-metadata-vulns.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
-# Fixture 3: clean audit — no findings, all nine allowlisted GHSAs present
+# Fixture 3: clean audit — no findings, all ten allowlisted GHSAs present
 # in the report so the staleness check passes.
 # Shape mirrors a real npm audit --json output with zero vulnerabilities.
 # The roster is: seroval x5 (via @tarquinen/opencode-dcp -> solid-js),
-# toml x3 (via @opencode-ai/plugin -> effect), zod x1 (via
+# toml x4 (via @opencode-ai/plugin -> effect), zod x1 (via
 # @opencode-ai/plugin and opencode-goal-plugin direct pins). The four
 # undici/busboy advisories that came in with @tarquinen/opencode-smart-title
 # left with that plugin's removal (EOP-257) and must NOT appear here.
@@ -294,6 +294,17 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
           "cwe": ["CWE-400"],
           "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
           "range": "<=5.0.0"
+        },
+        {
+          "source": 1099532,
+          "name": "toml",
+          "dependency": "toml",
+          "title": "toml-node: Prototype pollution: parsing a TOML document can write to Object.prototype",
+          "url": "https://github.com/advisories/GHSA-h895-cgqg-jf52",
+          "severity": "high",
+          "cwe": ["CWE-1321"],
+          "cvss": {"score": 7.5, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"},
+          "range": "<=5.0.0"
         }
       ],
       "effects": [],
@@ -328,9 +339,9 @@ cat > "$workdir/fixture-clean-with-allowlisted.json" <<'JSON'
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 8,
+      "high": 9,
       "critical": 1,
-      "total": 9
+      "total": 10
     },
     "dependencies": {
       "prod": 9,
@@ -414,7 +425,7 @@ run_advisory_check \
 echo
 echo "--- Valid audit documents ---"
 run_advisory_check \
-    "all nine allowlisted GHSAs present: exits 0 (clean)" \
+    "all ten allowlisted GHSAs present: exits 0 (clean)" \
     "$workdir/fixture-clean-with-allowlisted.json" \
     0
 
