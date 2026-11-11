@@ -131,6 +131,18 @@
       "reviewed": "2026-11-07",
       "reviewed_under": "EOP-259"
     },
+    "GHSA-h895-cgqg-jf52": {
+      "module": "toml",
+      "severity": "high",
+      "reported_range": "<=5.0.0",
+      "installed": "4.3.0",
+      "title": "toml-node: Prototype pollution: parsing a TOML document can write to Object.prototype",
+      "introduced_by": "@opencode-ai/plugin@1.19.5 -> effect@4.0.0-beta.83 -> toml@4.3.0",
+      "reachability": "Same trace as GHSA-4qx8-w7c3-pj3p, re-verified against the installed tree on 2026-11-11: the only import of toml is effect/dist/unstable/cli/Primitive.js:14, and Toml.parse(content) is called only at line 353 by the fileParsers map used by Primitive.fileParse. No pinned plugin or @opencode-ai/plugin dist file references effect/unstable/cli, Primitive.fileParse or Toml.parse, so the parser module and its prototype-polluting parse path are never loaded.",
+      "no_fix_available": "There is no in-range upgrade. @opencode-ai/plugin@1.19.5 is still the newest release and pins effect@4.0.0-beta.83 exactly; that Effect release declares `toml ^4.1.1`, which resolves to 4.3.0 and cannot select the patched 5.0.1. Reaching the fix requires an upstream @opencode-ai/plugin release that moves its exact Effect pin or otherwise removes or updates TOML. Changing only this repository's generated audit manifest would not change the real plugin install.",
+      "reviewed": "2026-11-11",
+      "reviewed_under": "EOP-258"
+    },
     "GHSA-mrhx-c7xc-m3w5": {
       "module": "zod",
       "severity": "high",
