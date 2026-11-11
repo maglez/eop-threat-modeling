@@ -6,6 +6,7 @@
     "introduced by @tarquinen/opencode-smart-title were deleted with that",
     "plugin's removal, the two seroval entries were refreshed, and seven new",
     "entries were added after tracing each one (seroval x3, toml x3, zod x1).",
+    "Extended 2026-11-11 (EOP-258) with one further toml advisory (toml x4 total).",
     "",
     "SCOPE. This file governs high and critical advisories only, because those are",
     "the only severities that fail the audit. Low and moderate findings are reported",
