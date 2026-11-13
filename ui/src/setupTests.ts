@@ -48,7 +48,7 @@ if (typeof Element.prototype.setPointerCapture === "undefined") {
 // and a test that needs the reduced-motion path replaces `window.matchMedia`
 // itself. Same reasoning as the two shims above: a genuine jsdom omission,
 // papered over once rather than per test.
-if (typeof window.matchMedia === "undefined") {
+if (typeof window.matchMedia !== "function") {
     window.matchMedia = function matchMedia(query: string): MediaQueryList {
         return {
             matches: false,

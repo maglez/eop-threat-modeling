@@ -47,7 +47,7 @@
     "SECURITY": 0
   },
   "coverage": 90.7,
-  "generatedAt": "2026-11-07T12:48:03Z",
+  "generatedAt": "2026-11-13T09:55:25Z",
   "issues": [
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/FollowSuitHint.tsx|f0c715412bbc4555cd76e5d6b664ffd4",
     "MAINTAINABILITY,RELIABILITY|typescript:S7781|src/components/GameOverScreen.tsx|5b89c7407eeb795475a0d05f003ccf72",
@@ -71,7 +71,7 @@
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|eafafa7528a1cd60013fc495d933b241",
     "MAINTAINABILITY|typescript:S7741|src/setupTests.ts|ed86bc12f87ddb5d2c00df640ecd7b14"
   ],
-  "ncloc": 2942,
+  "ncloc": 2990,
   "scannerImage": "sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9",
   "scope": {
     "ALL": {
@@ -99,7 +99,7 @@
     }
   },
   "sonarQubeVersion": "26.8.0.126808",
-  "sourceFileCount": 30,
-  "sourceHash": "b5d8bab8d317d5971dbdef9778b6f9ae2e358d263c26de4a53472170db8afc5d",
+  "sourceFileCount": 32,
+  "sourceHash": "161cbfb0f8097dc099c6a9a8641fb30f5a2711a411b99395038edb3600523356",
   "tests": null
 }
