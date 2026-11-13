@@ -431,14 +431,16 @@ MODEL_G=opencode/glm-5
 #MODEL_F=opencode-go/glm-5.3
 #MODEL_G=opencode-go/muse-spark-1.3-contributor
 
-# === Go Free === (same provider, free models only — only three $0/$0 ids exist
-# at the time of writing, so tiers repeat; see `.env.example`)
-#MODEL_A=opencode-go/crouton-alpha-free
-#MODEL_B=opencode-go/beam-free
-#MODEL_C=opencode-go/iceman-contributor-free
-#MODEL_D=opencode-go/iceman-contributor-free
+# === Go Free === (same provider, free models only — this block is regenerated
+# from the live catalogue by `./tools/switch-provider.sh go-free`; the IDs below
+# are a snapshot and may lag. Only three $0/$0 models exist at the time of
+# writing, so tiers repeat; see `.env.example`)
+#MODEL_A=opencode-go/beam-free
+#MODEL_B=opencode-go/iceman-contributor-free
+#MODEL_C=opencode-go/longcat-2.5-free
+#MODEL_D=opencode-go/beam-free
 #MODEL_E=opencode-go/iceman-contributor-free
-#MODEL_F=opencode-go/crouton-alpha-free
+#MODEL_F=opencode-go/longcat-2.5-free
 #MODEL_G=opencode-go/beam-free
 
 # === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
@@ -451,7 +453,7 @@ MODEL_G=opencode/glm-5
 # MODEL_G=amazon-bedrock/zai.glm-5
 ```
 
-> `./tools/switch-provider.sh [zen|bedrock|go|go-free]` toggles which block is commented (`go --free-only` is the same as `go-free`). It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Go ===`, `# === Go Free ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
+> `./tools/switch-provider.sh [zen|bedrock|go|go-free]` toggles which block is commented (`go --free-only` is the same as `go-free`). For the Zen, Go and Bedrock blocks it holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Go ===`, `# === Go Free ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. The `# === Go Free ===` block is the exception: `go-free` fetches the live catalogue (`https://opencode.ai/zen/go/v1/models`), filters zero-cost models, and rewrites the seven `MODEL_*` lines round-robin before toggling, so that block always reflects the current free set. `--offline` skips the fetch and uses the existing block; `--refresh` rewrites the block without switching; `--dry-run` prints the result and changes nothing. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
 
 
 ##### To Switch Providers
