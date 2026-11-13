@@ -431,15 +431,31 @@ MODEL_G=opencode/glm-5
 #MODEL_F=opencode-go/glm-5.3
 #MODEL_G=opencode-go/muse-spark-1.3-contributor
 
-# === Go Free === (same provider, free models only — only three $0/$0 ids exist
-# at the time of writing, so tiers repeat; see `.env.example`)
-#MODEL_A=opencode-go/crouton-alpha-free
-#MODEL_B=opencode-go/beam-free
-#MODEL_C=opencode-go/iceman-contributor-free
-#MODEL_D=opencode-go/iceman-contributor-free
+# === Go Free === (same provider, free models only — this block is regenerated
+# from the live catalogue by `./tools/switch-provider.sh go-free`; the IDs below
+# are a snapshot and may lag. Only three $0/$0 models exist at the time of
+# writing, so tiers repeat; see `.env.example`)
+#MODEL_A=opencode-go/beam-free
+#MODEL_B=opencode-go/iceman-contributor-free
+#MODEL_C=opencode-go/longcat-2.5-free
+#MODEL_D=opencode-go/beam-free
 #MODEL_E=opencode-go/iceman-contributor-free
-#MODEL_F=opencode-go/crouton-alpha-free
+#MODEL_F=opencode-go/longcat-2.5-free
 #MODEL_G=opencode-go/beam-free
+
+# === Go Cheap === (same provider, cheap paid models only — input <= $0.20 per
+# 1M tokens. Regenerated from the live catalogue by `./tools/switch-provider.sh
+# go-cheap`; the IDs below are a snapshot and may lag. Prices are USD per 1M
+# tokens (input/output). Cheap does NOT mean free — you are billed per token. The
+# muse-spark-* Contributor models are discounted in exchange for permission to use
+# your prompts/completions for training.)
+#MODEL_A=opencode-go/claude-haiku-5-5
+#MODEL_B=opencode-go/gpt-6-luna
+#MODEL_C=opencode-go/muse-spark-1.2-contributor
+#MODEL_D=opencode-go/muse-spark-1.3-contributor
+#MODEL_E=opencode-go/hy3
+#MODEL_F=opencode-go/mimo-v2.6-flash
+#MODEL_G=opencode-go/deepseek-v4.1-flash
 
 # === Bedrock === (needs AWS_BEARER_TOKEN_BEDROCK and AWS_REGION)
 # MODEL_A=amazon-bedrock/global.anthropic.claude-opus-5
@@ -451,7 +467,7 @@ MODEL_G=opencode/glm-5
 # MODEL_G=amazon-bedrock/zai.glm-5
 ```
 
-> `./tools/switch-provider.sh [zen|bedrock|go|go-free]` toggles which block is commented (`go --free-only` is the same as `go-free`). It holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Go ===`, `# === Go Free ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it.
+> `./tools/switch-provider.sh [zen|bedrock|go|go-free|go-cheap|agents]` toggles which block is commented (`go --free-only` is the same as `go-free`; `go --cheap` is the same as `go-cheap`). For the Zen, Go and Bedrock blocks it holds **no** model IDs of its own — it only moves `#` markers within ranges delimited by the `# === Zen ===`, `# === Go ===`, `# === Go Free ===`, `# === Go Cheap ===`, `# === Bedrock ===` and `# AWS` comment lines, so editing a model *value* by hand is safe and survives any number of switches. The `# === Go Free ===` and `# === Go Cheap ===` blocks are the exception: `go-free` fetches the live catalogue (`https://opencode.ai/zen/go/v1/models`), filters zero-cost models, and rewrites the seven `MODEL_*` lines round-robin before toggling, so that block always reflects the current free set; `go-cheap` filters paid models with input price <= $0.20 per 1M tokens, rewrites the block with the seven cheapest, and prints each selected model's per-1M-token price. `--offline` skips the fetch and uses the existing block; `--refresh` rewrites the block without switching; `--dry-run` prints the result and changes nothing. Every model line must start at column 0 with `MODEL_` or `#MODEL_` for the script to find it. The `agents` command makes no change: it reads the agent → tier mapping from `.opencode/opencode.json` and the active `MODEL_*` values from `.env`, and prints the model assigned to each delivery and expert agent (every successful switch prints the same table automatically).
 
 
 ##### To Switch Providers
