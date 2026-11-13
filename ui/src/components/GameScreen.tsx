@@ -17,6 +17,7 @@ import { ErrorSummary } from './ErrorSummary';
 import { CardLens, useCardMagnifier } from './CardMagnifier';
 import { FollowSuitHint } from './FollowSuitHint';
 import { cardImagePath } from '../utils/cardImagePath';
+import { usePrefersReducedMotion } from '../utils/usePrefersReducedMotion';
 import './GameScreen.css';
 
 
@@ -154,6 +155,7 @@ interface CardFaceProps {
 function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown }: CardFaceProps): React.JSX.Element {
   const [focused, setFocused] = React.useState(false);
   const magnifier = useCardMagnifier();
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -226,7 +228,7 @@ function CardFace({ card, selected, disabled, dragging, onSelect, onPointerDown 
         boxShadow: focused ? focusBoxShadow : selected ? '0 0 0 3px #ffdd00' : dragging ? '4px 4px 12px rgba(0,0,0,0.3)' : '1px 1px 4px rgba(0,0,0,0.15)',
         userSelect: 'none',
         touchAction: 'none',
-        transition: 'box-shadow 0.1s, opacity 0.1s',
+        transition: prefersReducedMotion ? 'none' : 'box-shadow 0.1s, opacity 0.1s',
         flexShrink: 0,
       }}
     >
@@ -399,6 +401,7 @@ export function GameScreen({
   const [isEndingGame, setIsEndingGame] = useState(false);
   const winnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropZoneRef = useRef<HTMLDivElement | null>(null);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const currentPlayer = session.players.find(p => p.playerId === playerId);
   const mySeats = currentPlayer?.seatOrder;
@@ -829,7 +832,7 @@ export function GameScreen({
               alignItems: 'center',
               gap: '12px',
               backgroundColor: dragState ? '#e8f0fb' : '#f3f2f1',
-              transition: 'background-color 0.15s, border-color 0.15s',
+              transition: prefersReducedMotion ? 'none' : 'background-color 0.15s, border-color 0.15s',
             }}
             aria-label="Current trick — drop a card here to play it"
           >
@@ -929,7 +932,9 @@ export function GameScreen({
                 pointerEvents: 'none',
                 zIndex: 1000,
                 opacity: 0.85,
-                transform: 'rotate(5deg)',
+                // The tilt is purely decorative; a reduced-motion user gets an
+                // axis-aligned ghost that still tracks the pointer.
+                transform: prefersReducedMotion ? 'none' : 'rotate(5deg)',
               }}
             >
               <div style={{

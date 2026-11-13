@@ -39,3 +39,34 @@ if (typeof Element.prototype.setPointerCapture === "undefined") {
         return false;
     };
 }
+
+// jsdom implements neither `matchMedia` nor a media-query engine, while every
+// browser we support implements both. `usePrefersReducedMotion` reads it on
+// render and subscribes to it in an effect, so without this shim the hook throws
+// and the whole suite fails for a reason that has nothing to do with the
+// component under test. The shim reports `matches: false` — the default path —
+// and a test that needs the reduced-motion path replaces `window.matchMedia`
+// itself. Same reasoning as the two shims above: a genuine jsdom omission,
+// papered over once rather than per test.
+if (typeof window.matchMedia === "undefined") {
+    window.matchMedia = function matchMedia(query: string): MediaQueryList {
+        return {
+            matches: false,
+            media: query,
+            onchange: null,
+            addListener: (): void => {
+                /* no-op: jsdom has no media-query engine to notify */
+            },
+            removeListener: (): void => {
+                /* no-op */
+            },
+            addEventListener: (): void => {
+                /* no-op */
+            },
+            removeEventListener: (): void => {
+                /* no-op */
+            },
+            dispatchEvent: (): boolean => false,
+        };
+    };
+}
