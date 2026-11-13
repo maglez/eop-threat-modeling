@@ -5,16 +5,19 @@ set -euo pipefail
 # fixture instead of the developer's real .env. It is unset in normal use.
 ENV_FILE="${SWITCH_PROVIDER_ENV_FILE:-$(cd "$(dirname "$0")/.." && pwd)/.env}"
 CATALOG_URL="https://opencode.ai/zen/go/v1/models"
+CONFIG_JSON="$(cd "$(dirname "$0")/.." && pwd)/.opencode/opencode.json"
 
 usage() {
-  echo "Usage: $0 <zen|bedrock|go|go-free> [flags]"
+  echo "Usage: $0 <zen|bedrock|go|go-free|agents> [flags]"
   echo "       $0 go --free-only        (same as go-free)"
   echo "       $0 go-free --refresh     (rewrite the Go Free block from the live catalogue, no toggle)"
   echo "       $0 go-free --dry-run     (show what would change, touch nothing)"
+  echo "       $0 agents                (print the model assigned to each agent, then exit)"
   echo "  zen        — switch to OpenCode Zen provider"
   echo "  bedrock    — switch to AWS Bedrock provider"
   echo "  go         — switch to OpenCode Go provider (paid Go models)"
   echo "  go-free    — switch to OpenCode Go, free models only"
+  echo "  agents     — report which model each agent is pinned to; makes no change"
   echo "  --free-only— go target restricted to free models; implies go"
   echo "  --offline  — do not fetch the catalogue; use the existing Go Free block"
   echo "  --refresh  — refresh the Go Free block only; implies go-free, no toggle"
@@ -29,7 +32,7 @@ DRY_RUN=false
 
 for arg in "$@"; do
   case "$arg" in
-    zen|bedrock|go|go-free)
+    zen|bedrock|go|go-free|agents)
       if [ -n "$PROVIDER" ]; then echo "Error: multiple providers given ('$PROVIDER' and '$arg')" >&2; usage >&2; exit 1; fi
       PROVIDER="$arg"
       ;;
@@ -220,6 +223,47 @@ rewrite_go_free_block() {
   mv "$tmp" "$ENV_FILE"
 }
 
+# Prints the model ID assigned to MODEL_<tier> in the active (uncommented) block,
+# or nothing if the tier is unset. Uses grep + sed rather than an associative
+# array so the script still runs under macOS' default bash 3.2.
+active_value() {
+  grep -E "^MODEL_$1=" "$ENV_FILE" 2>/dev/null | sed "s/^MODEL_$1=//" || true
+}
+
+# Reports which model each agent is pinned to. The agent -> tier mapping is read
+# from .opencode/opencode.json (the authoritative source) rather than hardcoded,
+# and the tier -> model value comes from the active block in .env, so the report
+# always reflects what a restart of opencode would actually use.
+print_agent_mapping() {
+  echo
+  echo "Model assigned to each agent (active block):"
+  if [ ! -f "$CONFIG_JSON" ]; then
+    echo "  (warning: $CONFIG_JSON not found — cannot map agents to tiers)" >&2
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "  (warning: 'jq' not found — cannot map agents to tiers)" >&2
+    return 0
+  fi
+  local tiers_agents value agents tier
+  tiers_agents=$(jq -r '.agent | to_entries[] | [(.value.model | sub("\\{env:"; "") | sub("\\}"; "")), .key] | @tsv' "$CONFIG_JSON")
+  for tier in A B C D E F G; do
+    value=$(active_value "$tier")
+    printf '  MODEL_%s  %s\n' "$tier" "${value:-<unset>}"
+    if [ "$tier" = "D" ]; then
+      printf '           (small_model — no agent assigned)\n'
+      continue
+    fi
+    agents=$(printf '%s\n' "$tiers_agents" | awk -F'\t' -v t="MODEL_$tier" '$1==t {print $2}' | sort | awk '{ if (NR>1) printf ", "; printf "%s", $0 }')
+    if [ -n "$agents" ]; then
+      printf '           %s\n' "$agents"
+    else
+      printf '           (no agent assigned)\n'
+    fi
+  done
+  echo "  Note: MODEL_A is also the default/main model; MODEL_D is the small_model."
+}
+
 FREE_COUNT=0
 FREE_IDS=""
 
@@ -255,6 +299,11 @@ if [ "$PROVIDER" = "go-free" ]; then
   fi
 fi
 
+if [ "$PROVIDER" = "agents" ]; then
+  print_agent_mapping
+  exit 0
+fi
+
 case "$PROVIDER" in
   zen)
     echo "Switching to OpenCode Zen..."
@@ -281,5 +330,7 @@ case "$PROVIDER" in
     uncomment_block "$BEDROCK_RANGE"
     ;;
 esac
+
+print_agent_mapping
 
 echo "Done. Restart opencode for the change to take effect."
