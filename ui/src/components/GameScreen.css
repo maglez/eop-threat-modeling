@@ -103,7 +103,10 @@
   padding: 8px;
   background-color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* Scoped to the two properties that actually change on this element. `all`
+     would animate every future property too, and a colour or size change added
+     later would start moving without anyone opting in. */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -224,5 +227,26 @@
   .eop-trick-area {
     min-height: 150px;
     max-width: 300px;
+  }
+}
+
+/* Respect the operating system's "reduce motion" preference.
+ *
+ * The lift on hover and selection is decorative: the border-colour and
+ * box-shadow changes already carry the state, so the movement is removed
+ * entirely rather than shortened, and the transition is dropped so the
+ * remaining colour change is instant. The disabled variants need no override
+ * here — they already pin `transform: none`.
+ *
+ * This block covers the stylesheet's own motion. The hand card's inline
+ * `transition` and the drag ghost's inline `transform` are gated in
+ * `GameScreen.tsx` by `usePrefersReducedMotion`, because a media query cannot
+ * override an inline style without `!important`. */
+@media (prefers-reduced-motion: reduce) {
+  .eop-card,
+  .eop-card:hover,
+  .eop-card-selected {
+    transition: none;
+    transform: none;
   }
 }

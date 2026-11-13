@@ -683,6 +683,82 @@ describe('GameScreen', () => {
   });
 
   /**
+   * Reduced-motion support.
+   *
+   * The hand card's `transition`, the drop zone's `transition` and the drag
+   * ghost's `transform` are inline styles, so a stylesheet media query cannot
+   * reach them — they are gated by `usePrefersReducedMotion` in GameScreen.tsx.
+   * These tests drive the real component with `window.matchMedia` stubbed to
+   * each position, because that is the only way to prove the gate is wired.
+   */
+  describe('reduced motion', () => {
+    const renderWithHand = async (): Promise<{ card: HTMLElement; dropZone: HTMLElement }> => {
+      vi.spyOn(api, 'fetchHand').mockResolvedValue(makeHand([spoofingKing, tamperingKing]));
+      vi.spyOn(api, 'getTrickState').mockResolvedValue(idleTrickState);
+      vi.spyOn(api, 'getSession').mockResolvedValue(mockSession);
+      vi.spyOn(api, 'subscribeToSession').mockReturnValue({ abort: vi.fn() } as unknown as AbortController);
+
+      render(<GameScreen {...defaultProps} />);
+
+      const card = await screen.findByRole('button', { name: /K of tampering/i });
+      const dropZone = screen.getByLabelText(/current trick.*drop a card/i);
+      return { card, dropZone };
+    };
+
+    const stubMotionPreference = (matches: boolean): void => {
+      vi.spyOn(window, 'matchMedia').mockReturnValue({
+        matches,
+        media: '(prefers-reduced-motion: reduce)',
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList);
+    };
+
+    it('keeps the card and drop-zone transitions by default', async () => {
+      stubMotionPreference(false);
+
+      const { card, dropZone } = await renderWithHand();
+
+      expect(card.style.transition).toBe('box-shadow 0.1s, opacity 0.1s');
+      expect(dropZone.style.transition).toBe('background-color 0.15s, border-color 0.15s');
+    });
+
+    it('drops the card and drop-zone transitions when the OS prefers reduced motion', async () => {
+      stubMotionPreference(true);
+
+      const { card, dropZone } = await renderWithHand();
+
+      expect(card.style.transition).toBe('none');
+      expect(dropZone.style.transition).toBe('none');
+    });
+
+    it('keeps the drag ghost upright when the OS prefers reduced motion', async () => {
+      stubMotionPreference(true);
+
+      const { card } = await renderWithHand();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 10, clientY: 400 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 150, clientY: 250 });
+
+      // The ghost is the only `position: fixed` element GameScreen renders.
+      const ghost = document.querySelector<HTMLElement>('div[style*="position: fixed"]');
+      expect(ghost).not.toBeNull();
+      expect(ghost?.style.transform).toBe('none');
+    });
+
+    it('tilts the drag ghost by default', async () => {
+      stubMotionPreference(false);
+
+      const { card } = await renderWithHand();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 10, clientY: 400 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 150, clientY: 250 });
+
+      const ghost = document.querySelector<HTMLElement>('div[style*="position: fixed"]');
+      expect(ghost).not.toBeNull();
+      expect(ghost?.style.transform).toBe('rotate(5deg)');
+    });
+  });
+
+  /**
    * Follow-suit hint (EOP-168).
    *
    * These tests drive the hint through GameScreen rather than through
