@@ -175,6 +175,36 @@
         "tools/sonar/sonar-ui-report.json"
       ],
       "note": "The scanner tools/sonar/scan-ui.sh runs over ui/src, since ui/ has no pom.xml. Single-platform amd64, so it runs under emulation on Apple silicon and that scan is slow -- this is the one reference here that is NOT an index, which is why the audit compares mediaType rather than demanding one. Three occurrences: the script that runs it, and the two committed JSONs that record which scanner produced them. Those two are the reason the mirror check exists -- sonar-ratchet-ui's sourceHash covers only ui/package.json, ui/tsconfig.json, ui/vite.config.ts and ui/src/**, so editing scan-ui.sh alone leaves the committed report naming a scanner that no longer ran, with nothing else in the build catching it."
+    },
+    "grafana/loki": {
+      "tag": "3.3.2",
+      "digest": "sha256:8af2de1abbdd7aa92b27c9bcc96f0f4140c9096b507c77921ffddf1c6ad6c48f",
+      "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm/v7",
+        "linux/arm64"
+      ],
+      "attestations": 0,
+      "occurrences": [
+        "compose.observability.yml"
+      ],
+      "note": "Loki log aggregation service for EOP application logs. Used for observability stack in compose.observability.yml."
+    },
+    "grafana/promtail": {
+      "tag": "3.3.2",
+      "digest": "sha256:cb4990801ec58975c5e231057c2bcf204c85fac428eec65ad66e0016c64b9608",
+      "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm/v7",
+        "linux/arm64"
+      ],
+      "attestations": 0,
+      "occurrences": [
+        "compose.observability.yml"
+      ],
+      "note": "Promtail log collector for EOP application logs. Used for observability stack in compose.observability.yml."
     }
   },
   "unpinned_allowlist": {
