@@ -1320,6 +1320,19 @@ jobs:
           key: ${{ runner.os }}-maven-cve-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
+      # Cache the Maven Wrapper distribution so `./mvnw` does not have to
+      # download apache-maven-3.9.9-bin.zip from Central on every run. That
+      # download was the source of the HTTP 429 that failed this job: Central
+      # rate-limits the shared runner IP, and the wrapper has no retry/backoff.
+      # The wrapper stores its distribution under ~/.m2/wrapper/dists, keyed
+      # on the wrapper properties file so a Maven version bump invalidates it.
+      - name: Cache Maven Wrapper distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('**/maven-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-maven-wrapper-
+
       # `dependency:resolve` rather than a full `verify`: this job has no
       # business compiling or testing anything, it only needs the POMs and
       # artifacts on disk so Trivy's parser finds them locally. If Central
