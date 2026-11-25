@@ -67,7 +67,21 @@ python3 - "$config" "$workdir/specs.txt" <<'PY'
 import json, sys
 cfg = json.load(open(sys.argv[1]))
 # A plugin entry is either "name@version" or ["name@version", {options}].
-specs = [p if isinstance(p, str) else p[0] for p in cfg.get("plugin", [])]
+raw = cfg.get("plugins", cfg.get("plugin", []))
+specs = []
+for entry in raw:
+    if isinstance(entry, str):
+        spec = entry
+    elif isinstance(entry, dict):
+        spec = entry.get("package") or entry.get("path")
+    else:
+        spec = None
+    if not spec:
+        continue
+    # Local plugins (paths, not npm specs) are out of scope for this audit.
+    if spec.startswith((".", "/", "file:")):
+        continue
+    specs.append(spec)
 if not specs:
     sys.exit("FATAL: no plugin specs found -- has the config shape changed?")
 for s in specs:
