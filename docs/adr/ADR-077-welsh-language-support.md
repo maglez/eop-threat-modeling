@@ -19,14 +19,14 @@ Welsh has six CLDR plural forms (zero/one/two/few/many/other) and Welsh ordinals
 Use `react-i18next`/`i18next` for runtime translation, interpolation and pluralisation. The dependency is a production dependency and therefore must:
 
 - be added to `ui/package.json` and `ui/package-lock.json` in the same commit;
-- pass `npm audit` and the Trivy CVE scan over `ui/package-lock.json` (ADR-050);
+- pass `npm audit` and the Trivy CVE scan over `ui/package-lock.json` (`ADR-050`);
 - be recorded in the project's supply-chain posture (no new HIGH/CRITICAL advisory without a traced allowlist entry).
 
 ### 2. Language is a runtime choice, not a build-time flag
 
-Per ADR-037, front-end flags are build-time `VITE_*` variables. **Language must be runtime**: a build-time Welsh bundle would require two deploys and offer no in-page switch, which contradicts "offer the application in Welsh". Implementation: a `LanguageProvider` (React context) exposing `locale`, `setLocale` and `t(key, params)`, placed in `ui/src/main.tsx` wrapping `<App />`, persisted to `localStorage` (`eop_locale`) and applied on mount.
+Per `ADR-037`, front-end flags are build-time `VITE_*` variables. **Language must be runtime**: a build-time Welsh bundle would require two deploys and offer no in-page switch, which contradicts "offer the application in Welsh". Implementation: a `LanguageProvider` (React context) exposing `locale`, `setLocale` and `t(key, params)`, placed in `ui/src/main.tsx` wrapping `<App />`, persisted to `localStorage` (`eop_locale`) and applied on mount.
 
-The *feature* (the toggle and the Welsh catalogue) is still gated behind `VITE_WELSH_LANGUAGE_ENABLED` (ADR-037) while it ships, defaulting `false`, so the change is shippable dark. The selected language is runtime; the feature flag is build-time. These are different mechanisms and must not be conflated (see ADR-013 / ADR-037).
+The *feature* (the toggle and the Welsh catalogue) is still gated behind `VITE_WELSH_LANGUAGE_ENABLED` (`ADR-037`) while it ships, defaulting `false`, so the change is shippable dark. The selected language is runtime; the feature flag is build-time. These are different mechanisms and must not be conflated (see `ADR-013` / `ADR-037`).
 
 ### 3. Scope v1: UI chrome only
 
@@ -65,17 +65,17 @@ The *feature* (the toggle and the Welsh catalogue) is still gated behind `VITE_W
 
 - **New production dependency**: `react-i18next` + `i18next` in `ui/package.json`, Trivy-clean and npm-audit-clean, pinned in `ui/package-lock.json`.
 - **No backend change in v1**: `./mvnw verify` (Java scope) is unaffected; only the front-end Sonar ratchet (`tools/sonar/sonar-ui-report.json`) must not rise, requiring a rescan after the extraction.
-- **Feature flag**: `VITE_WELSH_LANGUAGE_ENABLED` added to `ui/src/vite-env.d.ts` and wired through `ui/Dockerfile`, `.github/workflows/ci.yml`, `scripts/update-local.sh`, `ui/.env.example` per ADR-037. Default `false`.
+- **Feature flag**: `VITE_WELSH_LANGUAGE_ENABLED` added to `ui/src/vite-env.d.ts` and wired through `ui/Dockerfile`, `.github/workflows/ci.yml`, `scripts/update-local.sh`, `ui/.env.example` per `ADR-037`. Default `false`.
 - **No hexagonal impact**: the change is confined to the UI adapter layer (`ui/src/`) plus documentation. No domain, application or outbound adapter code is touched in v1; phase 2 touches `GlobalExceptionHandler` (interface adapter layer).
 - **Docs gates**: `npm run verify` in `ui/` must stay green; the extraction step (`EOP-263`) is done in isolation and verified before any Welsh content lands.
 - **Phase 3 (not in this epic)**: Welsh card content, subject to licensing review.
 
 ## References
 
-- ADR-009: Front-end React + TypeScript (amended)
-- ADR-013: Feature flags (back-end `@ConditionalOnProperty`)
-- ADR-037: Front-end build-time feature flags (`VITE_*`)
-- ADR-045: Front-end response validation
-- ADR-050: Dependency CVE scanning
+- `ADR-009`: Front-end React + TypeScript (amended)
+- `ADR-013`: Feature flags (back-end `@ConditionalOnProperty`)
+- `ADR-037`: Front-end build-time feature flags (`VITE_*`)
+- `ADR-045`: Front-end response validation
+- `ADR-050`: Dependency CVE scanning
 - `EOP-261`: Welsh language support epic
 - `EOP-262` … `EOP-267`: implementation stories
